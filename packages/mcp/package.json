@@ -1,0 +1,37 @@
+{
+  "name": "@othmanadi/ableton-mcp",
+  "version": "0.0.0",
+  "description": "Loophole Bridge: an MCP server built on Ableton's official Extensions SDK.",
+  "license": "MIT",
+  "author": "Ahmad Othman Ammar Adi (CodingWithAdi)",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "build": "tsup src/index.ts --format esm --dts --clean --sourcemap"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "pino": "^9.14.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4"
+  }
+}
