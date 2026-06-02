@@ -1,0 +1,33 @@
+{
+  "name": "loophole",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Loophole monorepo: the Loophole Bridge MCP server and the Loophole Kit of Ableton extensions.",
+  "license": "MIT",
+  "author": "Ahmad Othman Ammar Adi (CodingWithAdi)",
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^22.19.19",
+    "@vitest/coverage-v8": "^2.1.9",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.60.1",
+    "vitest": "^2.1.9"
+  }
+}

@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env / secrets (never commit real values)
+.env
+.env.*
+!.env.example
+.loophole/
+bridge.json
+
+# Ableton Extensions SDK beta packages: do NOT redistribute the beta .tgz publicly.
+# Contributors fetch their own from the Ableton Beta Program (Centercode).
+packages/extension/vendor/*.tgz
+
+# Packaged extension build artifacts (shipped via GitHub Releases, not the tree)
+*.ablx
+
+# Editor / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+.DS_Store
+Thumbs.db

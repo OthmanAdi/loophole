@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "comment": "Typecheck runs per package via `pnpm -r typecheck` (each package's `tsc --noEmit`). No project references: the mcp package is built non-composite so `tsup --dts` can emit dist/index.d.ts.",
+  "files": [],
+  "include": []
+}

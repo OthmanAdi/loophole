@@ -1,0 +1,18 @@
+{
+  "name": "@othmanadi/loophole-extension",
+  "version": "0.0.0",
+  "description": "Loophole Kit: the Ableton extension shell that hosts the Loophole Bridge. Placeholder, wired in wave W1.",
+  "license": "MIT",
+  "author": "Ahmad Othman Ammar Adi (CodingWithAdi)",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=24.14.1"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run --passWithNoTests",
+    "build": "node -e \"console.log('loophole-extension: build wired in wave W1')\""
+  }
+}

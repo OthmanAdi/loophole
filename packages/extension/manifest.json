@@ -1,0 +1,7 @@
+{
+  "name": "Loophole",
+  "author": "Ahmad Othman Ammar Adi",
+  "version": "0.0.0",
+  "entry": "dist/extension.js",
+  "minimumApiVersion": "1.0.0"
+}
