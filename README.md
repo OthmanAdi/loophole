@@ -103,14 +103,15 @@ When the Bridge ships, the install will be: install one `.ablx` in Live's Settin
 ```
 loophole/
 ├─ packages/
-│  ├─ mcp/          @othmanadi/ableton-mcp           the published Bridge, transport-agnostic
-│  └─ extension/    @othmanadi/loophole-extension     the .ablx shell, private (W0 placeholder)
+│  ├─ core/         @othmanadi/loophole-core          SDK-free heart: the LiveBridge port, DTOs, FakeLiveBridge, transforms
+│  ├─ mcp/          @othmanadi/ableton-mcp            the published Bridge, transport-agnostic
+│  └─ extension/    @othmanadi/loophole-extension     the .ablx shell, private (built in a later wave)
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json
 └─ README.md  CONTRIBUTING.md  SECURITY.md  CODE_OF_CONDUCT.md  LICENSE
 ```
 
-The split is deliberate. The published `mcp` package stays small, audited, and free of Live's beta SDK. The `extension` package is the deployment shell that imports it and packages to `.ablx`. The only file that ever imports the Ableton SDK is one adapter behind a `LiveBridge` interface, which is why the whole server is testable without Live (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+The split is deliberate. `core` is the SDK-free heart (the `LiveBridge` port, DTOs, a faithful `FakeLiveBridge`, and the pure transforms), fully tested with no Live. The published `mcp` package builds the MCP server on top of `core` and stays free of Live's beta SDK. The `extension` package is the deployment shell that packages to `.ablx`. The only file that ever imports the Ableton SDK is one adapter behind the `LiveBridge` interface, which is why the whole server is testable without Live (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ---
 
