@@ -1,10 +1,13 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "../../tsconfig.base.json",
+  "comment": "Typecheck-only config (tsc --noEmit). The published build is produced by tsup (see tsup.config.ts), which compiles independently and emits its own .d.ts, so tsc never emits here. rootDir/outDir are intentionally omitted: the path mapping below resolves '@othmanadi/loophole-core' to core SOURCE for typechecking, and those files live outside this package, which a rootDir would reject.",
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "noEmit": false
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@othmanadi/loophole-core": ["../core/src/index.ts"]
+    }
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
