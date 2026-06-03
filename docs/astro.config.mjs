@@ -42,6 +42,48 @@ function buildToolBlock() {
 }
 
 /**
+ * Site base for the GitHub Pages project site. Defined once and reused by both
+ * Astro's `base` and the rehype pass below, so the two never drift.
+ */
+const BASE = '/loophole';
+
+/**
+ * Add the site base to root-absolute links written in Markdown/MDX content.
+ *
+ * Astro does not rewrite root-absolute links (`/mcp/...`) in content with
+ * `base`, so on the project site served under `/loophole/` every in-content
+ * link would 404. This rehype pass prefixes internal `<a href="/...">` links
+ * (Markdown links become `<a>` elements in the HAST). It skips external,
+ * protocol-relative, in-page-anchor, and already-based hrefs, and is a no-op
+ * when served at the root, so dropping `base` for a custom domain needs no
+ * content edits. Frontmatter hero actions are not content and bypass this pass,
+ * so the two in index.mdx are written absolute.
+ */
+function rehypeBaseInternalLinks() {
+  if (!BASE || BASE === '/') return () => {};
+  const walk = (node) => {
+    if (
+      node.type === 'element' &&
+      node.tagName === 'a' &&
+      node.properties &&
+      typeof node.properties.href === 'string'
+    ) {
+      const href = node.properties.href;
+      if (
+        href.startsWith('/') &&
+        !href.startsWith('//') &&
+        href !== BASE &&
+        !href.startsWith(`${BASE}/`)
+      ) {
+        node.properties.href = `${BASE}${href}`;
+      }
+    }
+    if (Array.isArray(node.children)) node.children.forEach(walk);
+  };
+  return (tree) => walk(tree);
+}
+
+/**
  * Loophole docs site (04_LAUNCH_SPEC §1.2).
  *
  * `site` is set to the absolute canonical domain so canonical URLs and
@@ -57,15 +99,19 @@ function buildToolBlock() {
  * every page (§1.5 step 3, §1.6).
  */
 export default defineConfig({
-  // GitHub Pages project site. When a custom domain is set up
-  // later, change `site` to it and drop `base` (and add a CNAME).
+  // GitHub Pages project site. When a custom domain is set up later, change
+  // `site` to it, set `BASE` to '/' (the rehype pass then no-ops), add a CNAME,
+  // and update the two absolute hero links in index.mdx.
   site: 'https://othmanadi.github.io',
-  base: '/loophole',
+  base: BASE,
   // Astro's passthrough image service: the docs ship Mermaid (text) and SVG, not
   // raster images that need processing, so we skip the sharp pipeline. This keeps
   // the build green in constrained/CI environments where the native sharp binary
   // can fail to load (04_LAUNCH_SPEC verify note).
   image: { service: { entrypoint: 'astro/assets/services/noop' } },
+  // Astro applies these to .md and .mdx; the mdx() integration extends this
+  // markdown config by default, so the base-link pass covers both.
+  markdown: { rehypePlugins: [rehypeBaseInternalLinks] },
   integrations: [
     // astro-mermaid renders ```mermaid fences client-side (mermaid.js). It MUST
     // come before Starlight so it intercepts the fence at the remark stage,

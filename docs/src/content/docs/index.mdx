@@ -5,12 +5,14 @@ template: splash
 hero:
   tagline: Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK, so it installs as one .ablx with no Remote Script and no Max for Live.
   actions:
+    # Absolute base path: hero actions are frontmatter, not Markdown content, so
+    # the rehype base-link pass in astro.config.mjs does not reach them.
     - text: Connect Claude to Live
-      link: /mcp/quickstart/
+      link: /loophole/mcp/quickstart/
       icon: right-arrow
       variant: primary
     - text: Browse the extensions
-      link: /extensions/install/
+      link: /loophole/extensions/install/
       icon: open-book
       variant: minimal
 ---

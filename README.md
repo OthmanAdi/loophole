@@ -193,7 +193,6 @@ Sequenced so each wave ships standalone value and de-risks the next. Every wave 
 | **W5** | Session-to-Song Builder      | The flagship extension: turn a Session full of loops into a finished Arrangement in one transaction.                                                                                                                                                       |
 | **W6** | Set Janitor                  | Broadest read pass: empties, bad names, colors, overruns, fixed in one transaction.                                                                                                                                                                        |
 | **W7** | Docs site, registries, skill | Docs live at [othmanadi.github.io/loophole](https://othmanadi.github.io/loophole/) with an auto-generated tool reference and recipes; the `/doctor` + `/setup` skill installs via `npx skills add OthmanAdi/loophole --skill ableton-live`; registry prep. |
-| **W8** | Launch week                  | Registries and indexes first, spikes second; nothing posts without explicit approval.                                                                                                                                                                      |
 
 ---
 
