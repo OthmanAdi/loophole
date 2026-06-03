@@ -64,3 +64,6 @@ progress.md
 *.swp
 .DS_Store
 Thumbs.db
+
+# Internal launch strategy: staging only, must never be public
+launch/

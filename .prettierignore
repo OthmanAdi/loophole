@@ -11,3 +11,5 @@ pnpm-lock.yaml
 # prettier (no Astro parser plugin) must not sweep it, or `format:check` errors
 # on .astro files and couples the lean monorepo CI to the docs build.
 docs
+
+launch
