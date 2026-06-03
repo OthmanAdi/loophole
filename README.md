@@ -8,7 +8,7 @@
   <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-3c873a?logo=nodedotjs&logoColor=white" alt="Runs on Node 22 and 24" /></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-spec_2025--11--25-1f6feb" alt="Built on the Model Context Protocol, spec revision 2025-11-25" /></a>
   <a href="https://othmanadi.github.io/loophole/"><img src="https://img.shields.io/badge/docs-othmanadi.github.io%2Floophole-E9A23B" alt="Read the docs" /></a>
-  <a href="#build-wave-roadmap"><img src="https://img.shields.io/badge/v0.1-built_in_the_open-E9A23B" alt="v0.1, built in the open" /></a>
+  <a href="https://github.com/OthmanAdi/loophole/commits/main"><img src="https://img.shields.io/badge/v0.1-built_in_the_open-E9A23B" alt="v0.1, built in the open" /></a>
 </p>
 
 **Loophole is an Ableton MCP server and extension kit, built so you can control Ableton Live from Claude or any LLM through one `.ablx` you install in Settings.** It runs _inside_ Live on Ableton's official Extensions SDK, which makes it **the first MCP server built on Ableton's official Extensions SDK.** No Remote Script, no AbletonOSC, no Max for Live.
@@ -176,23 +176,6 @@ Loophole stands on work that came first, and credits it.
 - **[ableton-js](https://github.com/leolabs/ableton-js)** and **[AbletonOSC](https://github.com/ideoforms/AbletonOSC)** are the Node and OSC prior art the older bridges stand on. Same idea, different (unofficial) surface.
 
 What Loophole does **not** claim: not "first Ableton MCP" (ahujasid got there in 2025), not "first AI for Live" (Producer Pal exists), not "most complete coverage" (the API is beta with documented gaps). The architecture is the story, not the word "first."
-
----
-
-## Build-wave roadmap
-
-Sequenced so each wave ships standalone value and de-risks the next. Every wave below is **on `main` with CI green**; what remains is in-Live verification and the public launch.
-
-| Wave   | Milestone                    | One line                                                                                                                                                                                                                                                   |
-| ------ | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **W0** | Repo skeleton                | pnpm monorepo, strict TS base, ESLint + Prettier, Vitest, the `LiveBridge` seam + `FakeLiveBridge`, CI. Tests green with no Live.                                                                                                                          |
-| **W1** | Scale Lock                   | First extension end to end: MIDI read-map-write, packaged `.ablx`, one undo reverts.                                                                                                                                                                       |
-| **W2** | Humanize                     | Reuses the W1 MIDI loop; timing, velocity, and probability deviation.                                                                                                                                                                                      |
-| **W3** | Gain Stage Doctor            | Render pre-FX audio, measure peak/RMS/crest, write a corrective trim in one undo.                                                                                                                                                                          |
-| **W4** | Loophole Bridge v0.1         | The headline: in-process HTTP MCP server with 12 tools and read-only resources. Claude connects over loopback and edits a real clip.                                                                                                                       |
-| **W5** | Session-to-Song Builder      | The flagship extension: turn a Session full of loops into a finished Arrangement in one transaction.                                                                                                                                                       |
-| **W6** | Set Janitor                  | Broadest read pass: empties, bad names, colors, overruns, fixed in one transaction.                                                                                                                                                                        |
-| **W7** | Docs site, registries, skill | Docs live at [othmanadi.github.io/loophole](https://othmanadi.github.io/loophole/) with an auto-generated tool reference and recipes; the `/doctor` + `/setup` skill installs via `npx skills add OthmanAdi/loophole --skill ableton-live`; registry prep. |
 
 ---
 
