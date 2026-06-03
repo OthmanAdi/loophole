@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    Set Janitor checklist modal (W6), 03_EXTENSIONS_SPEC §5(c).
+
+    A grouped checklist of detected issues. Each issue has a checkbox; destructive
+    fixes (delete track/clip, i.e. the `emptyTrack` kind) are visually flagged and
+    DEFAULT UNCHECKED (the off-by-default caution §5(c) requires). Non-destructive
+    issues (placeholder names, off-palette colors) default checked. Fix returns
+    `{ chosenIssueIds }` via `close_and_send`; Cancel returns `{ chosenIssueIds: null }`.
+    The host injects the issues by replacing `/*__LOOPHOLE_DATA__*/{}` with
+    `{ issues: [{ id, kind, detail }] }` (ids are the stable detectIssues ids, so they
+    round-trip to the handler's re-detect). Both postMessage paths ship.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clean Up Set</title>
+    <script>
+      const LOOPHOLE = /*__LOOPHOLE_DATA__*/ {};
+
+      // The issue kinds whose fix deletes data (off by default; flagged in the UI).
+      const DESTRUCTIVE = new Set(['emptyTrack']);
+
+      const GROUP_LABEL = {
+        emptyTrack: 'Empty tracks (delete)',
+        placeholderName: 'Placeholder names (rename)',
+        offPaletteColor: 'Off-palette colors (recolor)',
+        loopOverrun: 'Loop overruns (manual fix)',
+      };
+
+      const isWebKit =
+        window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live;
+      const isWebView2 = window.chrome && window.chrome.webview;
+
+      function doSendMessage(message) {
+        if (isWebKit) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (isWebView2) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      function closeWithResult(result) {
+        doSendMessage({ method: 'close_and_send', params: [JSON.stringify(result)] });
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function fix() {
+        const chosenIssueIds = Array.from(
+          document.querySelectorAll('input[data-issue]:checked'),
+        ).map((el) => el.getAttribute('data-issue'));
+        closeWithResult({ chosenIssueIds });
+      }
+
+      function cancel() {
+        closeWithResult({ chosenIssueIds: null });
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const issues = Array.isArray(LOOPHOLE.issues) ? LOOPHOLE.issues : [];
+        document.getElementById('summary').textContent =
+          issues.length + ' issue' + (issues.length === 1 ? '' : 's') + ' found';
+
+        // Group by kind, preserving the detect order within each group.
+        const groups = {};
+        for (const issue of issues) {
+          (groups[issue.kind] = groups[issue.kind] || []).push(issue);
+        }
+        const container = document.getElementById('groups');
+        for (const kind of Object.keys(groups)) {
+          const section = document.createElement('div');
+          section.className = 'group';
+          const heading = document.createElement('div');
+          heading.className = 'group-head' + (DESTRUCTIVE.has(kind) ? ' destructive' : '');
+          heading.textContent = GROUP_LABEL[kind] || kind;
+          section.appendChild(heading);
+          for (const issue of groups[kind]) {
+            const isDestructive = DESTRUCTIVE.has(kind);
+            // loopOverrun has no auto-fix; show it disabled so the user sees it but
+            // cannot "choose" it (the handler drops it anyway).
+            const noFix = kind === 'loopOverrun';
+            const label = document.createElement('label');
+            label.className = 'issue' + (isDestructive ? ' destructive' : '');
+            label.innerHTML =
+              '<input type="checkbox" data-issue="' +
+              escapeHtml(issue.id) +
+              '"' +
+              (isDestructive || noFix ? '' : ' checked') +
+              (noFix ? ' disabled' : '') +
+              ' /> ' +
+              escapeHtml(issue.detail);
+            section.appendChild(label);
+          }
+          container.appendChild(section);
+        }
+        if (issues.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'empty';
+          empty.textContent = 'No issues found. The Set is clean.';
+          container.appendChild(empty);
+        }
+      });
+    </script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      *:not(dialog) {
+        margin: 0;
+      }
+      input,
+      button {
+        font: inherit;
+      }
+      :root {
+        --p-live-ui-bg: hsl(0, 0%, 21%);
+        --p-live-control-bg: hsl(0, 0%, 16%);
+        --p-live-text-primary: hsl(0, 0%, 71%);
+        --p-live-control-border: hsl(0, 0%, 7%);
+        --p-live-text-secondary: hsl(0, 0%, 41%);
+        --p-live-accent-primary: hsl(31, 100%, 67%);
+        --p-live-control-text--enabled: hsl(0, 0%, 7%);
+        --c-bg--0500: oklch(from var(--p-live-ui-bg) l c h);
+        --c-text-primary: oklch(from var(--p-live-text-primary) l c h);
+        --c-text-secondary: oklch(from var(--p-live-text-secondary) l c h);
+        --c-control-bg--400: oklch(from var(--p-live-control-bg) calc(l * 0.9) c h);
+        --c-control-bg--500: oklch(from var(--p-live-control-bg) l c h);
+        --c-control-border: oklch(from var(--p-live-control-border) l c h);
+        --c-control-outline: var(--c-text-secondary);
+        --c-control-on-foreground: oklch(from var(--p-live-control-text--enabled) l c h);
+        --c-highlight--primary: oklch(from var(--p-live-accent-primary) l c h);
+        --c-warn: oklch(0.62 0.19 25);
+      }
+      html {
+        background-color: var(--c-bg--0500);
+        color: var(--c-text-primary);
+        font-family: 'AbletonSansSmall', sans-serif;
+        font-size: 11.5px;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        height: 100%;
+      }
+      body {
+        height: 100%;
+        padding: 1.25em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6em;
+      }
+      .title {
+        font-size: 1.1rem;
+      }
+      .summary {
+        color: var(--c-text-secondary);
+      }
+      .list-wrap {
+        flex: 1;
+        overflow: auto;
+        border: 1px solid var(--c-control-border);
+        padding: 0.5em;
+      }
+      .group {
+        margin-bottom: 0.75em;
+      }
+      .group-head {
+        color: var(--c-text-secondary);
+        margin-bottom: 0.3em;
+      }
+      .group-head.destructive {
+        color: var(--c-warn);
+      }
+      .issue {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5em;
+        padding: 0.2em 0;
+        cursor: pointer;
+      }
+      .issue.destructive {
+        color: var(--c-warn);
+      }
+      .empty {
+        color: var(--c-text-secondary);
+        text-align: center;
+        padding: 1em;
+      }
+      .buttons {
+        display: flex;
+        gap: 0.5em;
+        justify-content: flex-end;
+      }
+      .alx-button {
+        font-size: 1rem;
+        line-height: 1;
+        background-color: var(--c-control-bg--500);
+        color: var(--c-text-primary);
+        border: 1px solid var(--c-control-border);
+        height: 22px;
+        padding: 0 1em;
+        border-radius: 1em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .alx-button:hover {
+        background-color: var(--c-control-bg--400);
+      }
+      .alx-button:active {
+        color: var(--c-control-on-foreground);
+        background-color: var(--c-highlight--primary);
+      }
+      .alx-button:focus {
+        outline: 2px solid var(--c-control-outline);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">Clean Up Set</div>
+    <div id="summary" class="summary">issues found</div>
+    <div class="list-wrap">
+      <div id="groups"></div>
+    </div>
+    <div class="buttons">
+      <button class="alx-button" onclick="cancel()">Cancel</button>
+      <button class="alx-button" onclick="fix()">Fix selected</button>
+    </div>
+  </body>
+</html>

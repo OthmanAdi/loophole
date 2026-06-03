@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    Scale Lock modal (W1), 03_EXTENSIONS_SPEC §1(c).
+
+    Shows the scale read live from the Set, a dry-pass off-scale count, and three snap
+    radios (Snap up / Snap down / Nearest, default Nearest). Apply returns
+    `{ mode: 'up'|'down'|'nearest' }` via `close_and_send`; Cancel returns
+    `{ mode: null }`.
+
+    The command injects the live data by replacing the `/*__LOOPHOLE_DATA__*/{}`
+    token below with a JSON literal `{ scaleLabel, offScaleCount, noteCount }` before
+    encoding the HTML into the data: URL (showModalDialog has no inbound channel, so the
+    host templates the page). Both the Windows (`window.chrome.webview.postMessage`) and
+    macOS (`window.webkit.messageHandlers.live.postMessage`) return paths are shipped.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lock to Scale</title>
+    <script>
+      const LOOPHOLE = /*__LOOPHOLE_DATA__*/ {};
+
+      const isWebKit =
+        window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live;
+      const isWebView2 = window.chrome && window.chrome.webview;
+
+      function doSendMessage(message) {
+        if (isWebKit) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (isWebView2) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      function closeWithResult(result) {
+        doSendMessage({ method: 'close_and_send', params: [JSON.stringify(result)] });
+      }
+
+      function selectedMode() {
+        const checked = document.querySelector('input[name="mode"]:checked');
+        return checked ? checked.value : 'nearest';
+      }
+
+      function apply() {
+        closeWithResult({ mode: selectedMode() });
+      }
+
+      function cancel() {
+        closeWithResult({ mode: null });
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const scale = LOOPHOLE.scaleLabel || 'the Set scale';
+        document.getElementById('scale').textContent = 'Scale: ' + scale;
+        const off = Number(LOOPHOLE.offScaleCount || 0);
+        const total = Number(LOOPHOLE.noteCount || 0);
+        document.getElementById('count').textContent =
+          off + ' of ' + total + ' notes are off-scale';
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') apply();
+          if (e.key === 'Escape') cancel();
+        });
+      });
+    </script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      *:not(dialog) {
+        margin: 0;
+      }
+      input,
+      button {
+        font: inherit;
+      }
+      :root {
+        --p-live-ui-bg: hsl(0, 0%, 21%);
+        --p-live-control-bg: hsl(0, 0%, 16%);
+        --p-live-text-primary: hsl(0, 0%, 71%);
+        --p-live-control-border: hsl(0, 0%, 7%);
+        --p-live-text-secondary: hsl(0, 0%, 41%);
+        --p-live-accent-primary: hsl(31, 100%, 67%);
+        --p-live-control-text--enabled: hsl(0, 0%, 7%);
+        --c-bg--0500: oklch(from var(--p-live-ui-bg) l c h);
+        --c-text-primary: oklch(from var(--p-live-text-primary) l c h);
+        --c-text-secondary: oklch(from var(--p-live-text-secondary) l c h);
+        --c-control-bg--400: oklch(from var(--p-live-control-bg) calc(l * 0.9) c h);
+        --c-control-bg--500: oklch(from var(--p-live-control-bg) l c h);
+        --c-control-border: oklch(from var(--p-live-control-border) l c h);
+        --c-control-outline: var(--c-text-secondary);
+        --c-control-on-foreground: oklch(from var(--p-live-control-text--enabled) l c h);
+        --c-highlight--primary: oklch(from var(--p-live-accent-primary) l c h);
+      }
+      html {
+        background-color: var(--c-bg--0500);
+        color: var(--c-text-primary);
+        font-family: 'AbletonSansSmall', sans-serif;
+        font-size: 11.5px;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        height: 100%;
+      }
+      body {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5em;
+      }
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75em;
+        width: 100%;
+      }
+      .title {
+        font-size: 1.1rem;
+        color: var(--c-text-primary);
+      }
+      .scale {
+        color: var(--c-highlight--primary);
+      }
+      .count {
+        color: var(--c-text-secondary);
+      }
+      .radios {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4em;
+      }
+      .radio {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        cursor: pointer;
+      }
+      .buttons {
+        display: flex;
+        gap: 0.5em;
+        justify-content: flex-end;
+        margin-top: 0.25em;
+      }
+      .alx-button {
+        font-size: 1rem;
+        line-height: 1;
+        background-color: var(--c-control-bg--500);
+        color: var(--c-text-primary);
+        border: 1px solid var(--c-control-border);
+        height: 22px;
+        padding: 0 1em;
+        border-radius: 1em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .alx-button:hover {
+        background-color: var(--c-control-bg--400);
+      }
+      .alx-button:active {
+        color: var(--c-control-on-foreground);
+        background-color: var(--c-highlight--primary);
+      }
+      .alx-button:focus {
+        outline: 2px solid var(--c-control-outline);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="form">
+      <div class="title">Lock to Scale</div>
+      <div id="scale" class="scale">Scale:</div>
+      <div class="radios">
+        <label class="radio"><input type="radio" name="mode" value="up" /> Snap up</label>
+        <label class="radio"><input type="radio" name="mode" value="down" /> Snap down</label>
+        <label class="radio"
+          ><input type="radio" name="mode" value="nearest" checked /> Nearest</label
+        >
+      </div>
+      <div id="count" class="count">off-scale notes</div>
+      <div class="buttons">
+        <button class="alx-button" onclick="cancel()">Cancel</button>
+        <button class="alx-button" onclick="apply()">Apply</button>
+      </div>
+    </div>
+  </body>
+</html>

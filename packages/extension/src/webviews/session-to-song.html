@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    Session-to-Song Builder modal (W5, flagship), 03_EXTENSIONS_SPEC §4(c).
+
+    A small table editor: each row is a section with a name field, a scene picker
+    (dropdown of the Set's scenes), and a bars number input. A free-text box parses
+    "Intro 8, Verse 16, Chorus 16, Bridge 8, Outro 8" into rows (the section name maps
+    to a scene by name when possible, else by position). Build returns
+    `{ sections: [{ name, sceneIndex, bars, color }] }` via `close_and_send`; Cancel
+    returns `{ sections: null }`. The host injects the scene list by replacing
+    `/*__LOOPHOLE_DATA__*/{}` with `{ scenes: [{ index, name }] }`. Both postMessage
+    paths ship. Color is the default palette swatch index per row (0 = uncolored).
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Build Arrangement from Session</title>
+    <script>
+      const LOOPHOLE = /*__LOOPHOLE_DATA__*/ {};
+      let scenes = [];
+
+      const isWebKit =
+        window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live;
+      const isWebView2 = window.chrome && window.chrome.webview;
+
+      function doSendMessage(message) {
+        if (isWebKit) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (isWebView2) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      function closeWithResult(result) {
+        doSendMessage({ method: 'close_and_send', params: [JSON.stringify(result)] });
+      }
+
+      function sceneOptions(selectedIndex) {
+        return scenes
+          .map(
+            (s) =>
+              '<option value="' +
+              s.index +
+              '"' +
+              (s.index === selectedIndex ? ' selected' : '') +
+              '>' +
+              escapeHtml(s.name) +
+              '</option>',
+          )
+          .join('');
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      function addRow(name, sceneIndex, bars) {
+        const tbody = document.getElementById('rows');
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          '<td><input class="alx-input name" type="text" value="' +
+          escapeHtml(name || '') +
+          '" /></td>' +
+          '<td><select class="alx-input scene">' +
+          sceneOptions(sceneIndex == null ? (scenes[0] ? scenes[0].index : 0) : sceneIndex) +
+          '</select></td>' +
+          '<td><input class="alx-input bars" type="number" min="1" value="' +
+          (bars || 8) +
+          '" /></td>' +
+          '<td><button class="alx-button small" onclick="this.closest(\'tr\').remove()">×</button></td>';
+        tbody.appendChild(tr);
+      }
+
+      // Map a parsed section name to a scene index: exact (case-insensitive) name
+      // match first, else fall back to the section's ordinal position.
+      function sceneIndexForName(name, ordinal) {
+        const lower = name.toLowerCase();
+        const hit = scenes.find((s) => s.name.toLowerCase() === lower);
+        if (hit) return hit.index;
+        const byPos = scenes[ordinal];
+        return byPos ? byPos.index : scenes[0] ? scenes[0].index : 0;
+      }
+
+      function parseFreeText() {
+        const text = document.getElementById('freetext').value;
+        const parts = text
+          .split(',')
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+        if (parts.length === 0) return;
+        document.getElementById('rows').innerHTML = '';
+        parts.forEach((part, i) => {
+          const m = part.match(/^(.*?)\s+(\d+)\s*$/);
+          const name = m ? m[1].trim() : part;
+          const bars = m ? Number(m[2]) : 8;
+          addRow(name, sceneIndexForName(name, i), bars);
+        });
+      }
+
+      function build() {
+        const rows = Array.from(document.querySelectorAll('#rows tr'));
+        const sections = rows
+          .map((tr) => {
+            const name = tr.querySelector('.name').value.trim();
+            const sceneIndex = Number(tr.querySelector('.scene').value);
+            const bars = Number(tr.querySelector('.bars').value);
+            return { name, sceneIndex, bars, color: 0 };
+          })
+          .filter((s) => s.name.length > 0 && s.bars > 0);
+        closeWithResult({ sections });
+      }
+
+      function cancel() {
+        closeWithResult({ sections: null });
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        scenes = Array.isArray(LOOPHOLE.scenes) ? LOOPHOLE.scenes : [];
+        // Seed one empty row so the editor is never blank.
+        addRow('Intro', scenes[0] ? scenes[0].index : 0, 8);
+        document.getElementById('parse').addEventListener('click', parseFreeText);
+        document.getElementById('addRow').addEventListener('click', () => addRow('', null, 8));
+      });
+    </script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      *:not(dialog) {
+        margin: 0;
+      }
+      input,
+      button,
+      select {
+        font: inherit;
+      }
+      :root {
+        --p-live-ui-bg: hsl(0, 0%, 21%);
+        --p-live-control-bg: hsl(0, 0%, 16%);
+        --p-live-input-bg: hsl(0, 0%, 12%);
+        --p-live-text-primary: hsl(0, 0%, 71%);
+        --p-live-control-border: hsl(0, 0%, 7%);
+        --p-live-text-secondary: hsl(0, 0%, 41%);
+        --p-live-accent-primary: hsl(31, 100%, 67%);
+        --p-live-control-text--enabled: hsl(0, 0%, 7%);
+        --c-bg--0500: oklch(from var(--p-live-ui-bg) l c h);
+        --c-text-primary: oklch(from var(--p-live-text-primary) l c h);
+        --c-text-secondary: oklch(from var(--p-live-text-secondary) l c h);
+        --c-control-bg--400: oklch(from var(--p-live-control-bg) calc(l * 0.9) c h);
+        --c-control-bg--500: oklch(from var(--p-live-control-bg) l c h);
+        --c-control-border: oklch(from var(--p-live-control-border) l c h);
+        --c-control-outline: var(--c-text-secondary);
+        --c-control-on-foreground: oklch(from var(--p-live-control-text--enabled) l c h);
+        --c-input-bg-500: oklch(from var(--p-live-input-bg) l c h);
+        --c-highlight--primary: oklch(from var(--p-live-accent-primary) l c h);
+      }
+      html {
+        background-color: var(--c-bg--0500);
+        color: var(--c-text-primary);
+        font-family: 'AbletonSansSmall', sans-serif;
+        font-size: 11.5px;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        height: 100%;
+      }
+      body {
+        height: 100%;
+        padding: 1.25em;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6em;
+      }
+      .title {
+        font-size: 1.1rem;
+      }
+      .freetext-row {
+        display: flex;
+        gap: 0.5em;
+      }
+      .alx-input {
+        background-color: var(--c-input-bg-500);
+        color: var(--c-text-primary);
+        border: 1px solid var(--c-control-border);
+        height: 22px;
+        padding: 0 0.33em;
+        width: 100%;
+      }
+      .table-wrap {
+        flex: 1;
+        overflow: auto;
+        border: 1px solid var(--c-control-border);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 0.25em 0.4em;
+        border-bottom: 1px solid var(--c-control-border);
+      }
+      th {
+        color: var(--c-text-secondary);
+      }
+      td .bars {
+        width: 64px;
+      }
+      .buttons {
+        display: flex;
+        gap: 0.5em;
+        justify-content: space-between;
+      }
+      .right {
+        display: flex;
+        gap: 0.5em;
+      }
+      .alx-button {
+        font-size: 1rem;
+        line-height: 1;
+        background-color: var(--c-control-bg--500);
+        color: var(--c-text-primary);
+        border: 1px solid var(--c-control-border);
+        height: 22px;
+        padding: 0 1em;
+        border-radius: 1em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .alx-button.small {
+        padding: 0 0.5em;
+      }
+      .alx-button:hover {
+        background-color: var(--c-control-bg--400);
+      }
+      .alx-button:active {
+        color: var(--c-control-on-foreground);
+        background-color: var(--c-highlight--primary);
+      }
+      .alx-button:focus {
+        outline: 2px solid var(--c-control-outline);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">Build Arrangement from Session</div>
+    <div class="freetext-row">
+      <input
+        class="alx-input"
+        id="freetext"
+        type="text"
+        placeholder="Intro 8, Verse 16, Chorus 16, Bridge 8, Outro 8"
+      />
+      <button class="alx-button" id="parse">Parse</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Section</th>
+            <th>Scene</th>
+            <th>Bars</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="buttons">
+      <button class="alx-button" id="addRow">Add section</button>
+      <div class="right">
+        <button class="alx-button" onclick="cancel()">Cancel</button>
+        <button class="alx-button" onclick="build()">Build</button>
+      </div>
+    </div>
+  </body>
+</html>

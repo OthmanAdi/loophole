@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <!--
+    Humanize / Groove Sculptor modal (W2), 03_EXTENSIONS_SPEC §2(c).
+
+    A Strength slider (0-100%), Timing / Velocity / Duration checkboxes, an optional
+    Swing slider (0-100%), and a "living pattern" checkbox (also writes probability /
+    velocityDeviation). Apply returns
+    `{ strength, swing, doTiming, doVelocity, doDuration, living }` via `close_and_send`
+    where strength/swing are 0..1 fractions (the handler's HumanizeOpts shape); Cancel
+    returns `{ strength: null }`. Both Windows and macOS postMessage paths ship. No
+    inbound data is needed, so the `/*__LOOPHOLE_DATA__*/{}` token is present only for
+    symmetry with the other modals and is unused here.
+  -->
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Humanize</title>
+    <script>
+      const LOOPHOLE = /*__LOOPHOLE_DATA__*/ {};
+
+      const isWebKit =
+        window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.live;
+      const isWebView2 = window.chrome && window.chrome.webview;
+
+      function doSendMessage(message) {
+        if (isWebKit) {
+          window.webkit.messageHandlers.live.postMessage(message);
+        } else if (isWebView2) {
+          window.chrome.webview.postMessage(message);
+        }
+      }
+
+      function closeWithResult(result) {
+        doSendMessage({ method: 'close_and_send', params: [JSON.stringify(result)] });
+      }
+
+      function apply() {
+        const strength = Number(document.getElementById('strength').value) / 100;
+        const swing = Number(document.getElementById('swing').value) / 100;
+        closeWithResult({
+          strength,
+          swing,
+          doTiming: document.getElementById('doTiming').checked,
+          doVelocity: document.getElementById('doVelocity').checked,
+          doDuration: document.getElementById('doDuration').checked,
+          living: document.getElementById('living').checked,
+        });
+      }
+
+      function cancel() {
+        closeWithResult({ strength: null });
+      }
+
+      function bindSlider(id, outId) {
+        const slider = document.getElementById(id);
+        const out = document.getElementById(outId);
+        const sync = () => {
+          out.textContent = slider.value + '%';
+        };
+        slider.addEventListener('input', sync);
+        sync();
+      }
+
+      document.addEventListener('DOMContentLoaded', () => {
+        bindSlider('strength', 'strengthOut');
+        bindSlider('swing', 'swingOut');
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') apply();
+          if (e.key === 'Escape') cancel();
+        });
+      });
+    </script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      *:not(dialog) {
+        margin: 0;
+      }
+      input,
+      button {
+        font: inherit;
+      }
+      :root {
+        --p-live-ui-bg: hsl(0, 0%, 21%);
+        --p-live-control-bg: hsl(0, 0%, 16%);
+        --p-live-text-primary: hsl(0, 0%, 71%);
+        --p-live-control-border: hsl(0, 0%, 7%);
+        --p-live-text-secondary: hsl(0, 0%, 41%);
+        --p-live-accent-primary: hsl(31, 100%, 67%);
+        --p-live-control-text--enabled: hsl(0, 0%, 7%);
+        --c-bg--0500: oklch(from var(--p-live-ui-bg) l c h);
+        --c-text-primary: oklch(from var(--p-live-text-primary) l c h);
+        --c-text-secondary: oklch(from var(--p-live-text-secondary) l c h);
+        --c-control-bg--400: oklch(from var(--p-live-control-bg) calc(l * 0.9) c h);
+        --c-control-bg--500: oklch(from var(--p-live-control-bg) l c h);
+        --c-control-border: oklch(from var(--p-live-control-border) l c h);
+        --c-control-outline: var(--c-text-secondary);
+        --c-control-on-foreground: oklch(from var(--p-live-control-text--enabled) l c h);
+        --c-highlight--primary: oklch(from var(--p-live-accent-primary) l c h);
+      }
+      html {
+        background-color: var(--c-bg--0500);
+        color: var(--c-text-primary);
+        font-family: 'AbletonSansSmall', sans-serif;
+        font-size: 11.5px;
+        font-weight: 500;
+        -webkit-font-smoothing: antialiased;
+        height: 100%;
+      }
+      body {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.25em;
+      }
+      .form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.7em;
+        width: 100%;
+      }
+      .title {
+        font-size: 1.1rem;
+      }
+      .slider-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25em;
+      }
+      .slider-label {
+        display: flex;
+        justify-content: space-between;
+      }
+      .slider-label .val {
+        color: var(--c-highlight--primary);
+      }
+      input[type='range'] {
+        width: 100%;
+      }
+      .checks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5em 1em;
+      }
+      .check {
+        display: flex;
+        align-items: center;
+        gap: 0.4em;
+        cursor: pointer;
+      }
+      .buttons {
+        display: flex;
+        gap: 0.5em;
+        justify-content: flex-end;
+        margin-top: 0.25em;
+      }
+      .alx-button {
+        font-size: 1rem;
+        line-height: 1;
+        background-color: var(--c-control-bg--500);
+        color: var(--c-text-primary);
+        border: 1px solid var(--c-control-border);
+        height: 22px;
+        padding: 0 1em;
+        border-radius: 1em;
+        cursor: pointer;
+        user-select: none;
+        white-space: nowrap;
+      }
+      .alx-button:hover {
+        background-color: var(--c-control-bg--400);
+      }
+      .alx-button:active {
+        color: var(--c-control-on-foreground);
+        background-color: var(--c-highlight--primary);
+      }
+      .alx-button:focus {
+        outline: 2px solid var(--c-control-outline);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="form">
+      <div class="title">Humanize</div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span>Strength</span><span id="strengthOut" class="val">35%</span>
+        </div>
+        <input type="range" id="strength" min="0" max="100" value="35" />
+      </div>
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="doTiming" checked /> Timing</label>
+        <label class="check"><input type="checkbox" id="doVelocity" checked /> Velocity</label>
+        <label class="check"><input type="checkbox" id="doDuration" /> Duration</label>
+      </div>
+      <div class="slider-row">
+        <div class="slider-label"><span>Swing</span><span id="swingOut" class="val">0%</span></div>
+        <input type="range" id="swing" min="0" max="100" value="0" />
+      </div>
+      <label class="check"
+        ><input type="checkbox" id="living" /> Living pattern (probability + velocity range)</label
+      >
+      <div class="buttons">
+        <button class="alx-button" onclick="cancel()">Cancel</button>
+        <button class="alx-button" onclick="apply()">Apply</button>
+      </div>
+    </div>
+  </body>
+</html>
