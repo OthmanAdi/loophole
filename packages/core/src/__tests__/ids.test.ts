@@ -15,6 +15,7 @@ import {
   leafKind,
   leafSegment,
   makePathId,
+  mixerVolumeParamId,
   paramId,
   parsePath,
   PathIdParseError,
@@ -36,12 +37,23 @@ describe('typed builders produce the documented id strings', () => {
     expect(cuePointId(0)).toBe('cuepoint:0');
     expect(deviceId(2, 0)).toBe('track:2/device:0');
     expect(paramId(2, 0, 3)).toBe('track:2/device:0/param:3');
+    expect(mixerVolumeParamId(2)).toBe('track:2/mixer/volume');
   });
 
   it('distinguishes a bare terminal clip from an indexed arrangement clip', () => {
     // sessionClipId ends in a bare `clip`; arrangementClipId uses `clip:M`.
     expect(sessionClipId(0, 0).endsWith('/clip')).toBe(true);
     expect(arrangementClipId(0, 0).endsWith('/clip:0')).toBe(true);
+  });
+
+  it('parses the bare mixer / volume segments of a mixer volume id', () => {
+    expect(parsePath(mixerVolumeParamId(2))).toEqual([
+      { kind: 'track', index: 2 },
+      { kind: 'mixer' },
+      { kind: 'volume' },
+    ]);
+    // Round-trips through makePathId (valid by construction).
+    expect(() => makePathId('track:0/mixer/volume')).not.toThrow();
   });
 });
 

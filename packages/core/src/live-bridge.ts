@@ -16,11 +16,15 @@
  *
  * Contract rules, taken verbatim from the SDK semantics:
  *  1. Reads are handle-backed getters and are SYNCHRONOUS (`getSongOverview`,
- *     `listTracks`, `findTrack`, `listClips`, `getNotes`, `listDeviceParams`). They
- *     return a snapshot, never a Promise.
+ *     `listTracks`, `findTrack`, `listClips`, `getNotes`, `listDeviceParams`,
+ *     `listScenes`, `getTrackMixer`). They return a snapshot, never a Promise.
  *  2. Mutations are ASYNC and return Promises (`setTempo`, `setTrackProps`,
- *     `setNotes`, `createTrack`, `createMidiClip`, `setParam`, `insertDevice`,
- *     `renderTrack`). Always `await` them. Each is one queued transaction = one undo.
+ *     `setNotes`, `setClipProps`, `createTrack`, `createMidiClip`,
+ *     `createArrangementMidiClip`, `createArrangementAudioClip`, `clearClipsInRange`,
+ *     `createCuePoint`, `deleteTrack`, `deleteClip`, `setParam`, `insertDevice`,
+ *     `renderTrack`). Always `await` them. Each is one queued transaction = one undo
+ *     (and collapses to zero extra undo steps when called inside
+ *     {@link LiveBridge.transaction}).
  *  3. Group several mutations into ONE user-facing undo step with
  *     {@link LiveBridge.transaction}, mirroring the SDK's `withinTransaction`.
  *  4. Referencing a deleted or unknown id throws a `BridgeError` with code
@@ -29,15 +33,19 @@
 
 import type {
   ClipInfo,
+  CreateAudioClipArgs,
+  CuePointInfo,
   DeviceInfo,
   DeviceParamInfo,
   NoteDTO,
   RenderResult,
+  SceneInfo,
   SetNotesResult,
   SongOverview,
   TrackInfo,
   TrackKind,
   TrackMatch,
+  TrackMixerInfo,
   TrackPropsPatch,
 } from './dtos.js';
 import type { ClipId, ClipSlotId, ParamId, TrackId } from './ids.js';
@@ -69,8 +77,10 @@ export interface LiveBridge {
 
   /**
    * Clips on a track: both Session-view clips (from clip slots) and Arrangement
-   * clips, each tagged with its `location` and `kind`. Empty Session slots are
-   * reported too (as `kind: 'empty'` entries carrying their `slotId`) so the model
+   * clips, each tagged with its `location` and `kind`, and each carrying its loop
+   * geometry including `endMarker` (so Set Janitor's loop-overrun rule can compare
+   * `endMarker > loopEnd` through the port). Empty Session slots are reported too (as
+   * `kind: 'empty'` entries carrying their `slotId`, with `endMarker: 0`) so the model
    * knows where it can create a clip. Backs `live_list_clips`.
    *
    * @throws BridgeError `STALE_REFERENCE` if `trackId` is unknown/deleted,
@@ -97,6 +107,28 @@ export interface LiveBridge {
    *   `WRONG_TYPE` if it does not resolve to a track.
    */
   listDeviceParams(trackId: TrackId): readonly DeviceParamInfo[];
+
+  /**
+   * Every scene in the Set, in scene order, each as a {@link SceneInfo} carrying its
+   * stable {@link import("./ids.js").SceneId}, name, and (read-only) tempo / time
+   * signature. Mirrors `Song.scenes`. Session-to-Song (W5) reads this so the user can
+   * map each scene to a song section.
+   */
+  listScenes(): readonly SceneInfo[];
+
+  /**
+   * The mixer of a track, exposing its volume as an addressable
+   * {@link DeviceParamInfo} (with `min` / `max` / `defaultValue` / `value`). Mirrors
+   * `Track.mixer.volume`, a `DeviceParameter`. SYNCHRONOUS: it returns the current
+   * parameter snapshot, not a Promise. The returned `volume.id` is a writable
+   * {@link ParamId}, so Gain Stage Doctor (W3) computes a trim and commits it through
+   * {@link LiveBridge.setParam} (the existing one-undo write path) without any new
+   * mutation method.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if `trackId` is unknown/deleted,
+   *   `WRONG_TYPE` if it does not resolve to a track.
+   */
+  getTrackMixer(trackId: TrackId): TrackMixerInfo;
 
   // --- mutations: async, awaitable, each ONE queued transaction = ONE undo ---
 
@@ -149,6 +181,90 @@ export interface LiveBridge {
    *   is already occupied, `BAD_INPUT` if `lengthBeats` is not > 0.
    */
   createMidiClip(slotId: ClipSlotId, lengthBeats: number): Promise<ClipInfo>;
+
+  /**
+   * Apply a partial patch of writable clip properties (`name`, `color`) in one undo
+   * step. Only the keys present are written. Accepts a Session or Arrangement clip
+   * id. Resolves to the post-write {@link ClipInfo}. Mirrors the sync `Clip.name =` /
+   * `Clip.color =` setters. Backs Set Janitor recolor/rename and Session-to-Song clip
+   * naming/coloring.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the clip is gone, `WRONG_TYPE` if the id
+   *   is not a clip.
+   */
+  setClipProps(clipId: ClipId, props: { name?: string; color?: number }): Promise<ClipInfo>;
+
+  /**
+   * Delete a track from the Set. Resolves when the track is gone. Mirrors
+   * `Song.deleteTrack(track)`. Backs Set Janitor's empty-track removal. After this,
+   * ids that referenced the track (or objects under it) are stale.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the track is unknown/deleted,
+   *   `WRONG_TYPE` if the id is not a track.
+   */
+  deleteTrack(trackId: TrackId): Promise<void>;
+
+  /**
+   * Delete a clip, accepting either a Session clip id (mirrors `ClipSlot.deleteClip()`,
+   * which empties the slot) or an Arrangement clip id (mirrors `Track.deleteClip(clip)`).
+   * Resolves when the clip is gone. Backs Set Janitor's clip removal. After this, the
+   * clip id is stale; for a Session clip the slot remains and reports empty.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the clip is gone, `WRONG_TYPE` if the id
+   *   is not a clip.
+   */
+  deleteClip(clipId: ClipId): Promise<void>;
+
+  /**
+   * Create an empty MIDI clip on the Arrangement timeline of a track at `startBeat`
+   * for `lengthBeats`, ready for {@link LiveBridge.setNotes}. Resolves to the new
+   * clip's {@link ClipInfo} (its id is an indexed arrangement clip id,
+   * `track:N/clip:M`). Mirrors `MidiTrack.createMidiClip(startTime, duration)`
+   * (positional, beats). Backs Session-to-Song's MIDI placements.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if it is
+   *   not a MIDI track, `BAD_INPUT` if `startBeat` is negative or `lengthBeats` is
+   *   not > 0.
+   */
+  createArrangementMidiClip(
+    trackId: TrackId,
+    startBeat: number,
+    lengthBeats: number,
+  ): Promise<ClipInfo>;
+
+  /**
+   * Create an audio clip on the Arrangement timeline of an audio track by file
+   * reference. Resolves to the new clip's {@link ClipInfo} (carrying `filePath`).
+   * Mirrors `AudioTrack.createAudioClip({ filePath, startTime, duration })`. Backs
+   * Session-to-Song's audio placements (it references the source clip by file rather
+   * than moving it).
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if it is
+   *   not an audio track, `BAD_INPUT` if `startTime` is negative, `duration` is not
+   *   > 0, or `filePath` is empty.
+   */
+  createArrangementAudioClip(trackId: TrackId, args: CreateAudioClipArgs): Promise<ClipInfo>;
+
+  /**
+   * Clear the Arrangement timeline of a track over a beat range, deleting clips fully
+   * inside it and TRUNCATING clips that overlap a boundary (matching
+   * `Track.clearClipsInRange(startTime, endTime)`). Resolves when done. Backs
+   * Session-to-Song cleaning the target range before it writes the new arrangement.
+   *
+   * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if the id
+   *   is not a track, `BAD_INPUT` if `endBeat <= startBeat` or either is negative.
+   */
+  clearClipsInRange(trackId: TrackId, startBeat: number, endBeat: number): Promise<void>;
+
+  /**
+   * Create an Arrangement cue point (locator) at `beat` with `name`. Resolves to the
+   * new {@link CuePointInfo}. Mirrors `Song.createCuePoint(time)` followed by the sync
+   * `CuePoint.name =` setter, grouped as one undo. Backs Session-to-Song's section
+   * locators.
+   *
+   * @throws BridgeError `BAD_INPUT` if `beat` is negative or not finite.
+   */
+  createCuePoint(beat: number, name: string): Promise<CuePointInfo>;
 
   /**
    * Set one device parameter to a value (within the parameter's own `min..max`).

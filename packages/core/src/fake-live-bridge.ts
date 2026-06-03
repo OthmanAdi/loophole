@@ -28,25 +28,32 @@
 import type {
   ClipInfo,
   ClipLocation,
+  CreateAudioClipArgs,
+  CuePointInfo,
   DeviceInfo,
   DeviceParamInfo,
   MixerInfo,
   NoteDTO,
   RenderResult,
+  SceneInfo,
   SetNotesResult,
   SongOverview,
   TrackInfo,
   TrackKind,
   TrackMatch,
+  TrackMixerInfo,
   TrackPropsPatch,
 } from './dtos.js';
 import { badInput, sdkRejected, staleReference, wrongType } from './errors.js';
 import {
   arrangementClipId,
   clipSlotId,
+  cuePointId,
   deviceId,
+  mixerVolumeParamId,
   paramId,
   parsePath,
+  sceneId,
   sessionClipId,
   trackId,
   type ClipId,
@@ -80,10 +87,18 @@ interface ClipModel {
   looping: boolean;
   loopStart: number;
   loopEnd: number;
+  /**
+   * Clip content end marker (beats). Defaults to the clip length; the Set Janitor
+   * loop-overrun rule compares it against `loopEnd`. The SDK exposes `endMarker` as a
+   * read-only getter, so the fake only reads it.
+   */
+  endMarker: number;
   color: number;
   muted: boolean;
   /** Present only for MIDI clips. */
   notes: NoteModel[];
+  /** Absolute source file path; present only for audio clips. */
+  filePath?: string;
 }
 
 interface ClipSlotModel {
@@ -104,6 +119,19 @@ interface DeviceModel {
   parameters: ParamModel[];
 }
 
+/**
+ * A track's mixer. `volume` is a full {@link ParamModel} (mirroring
+ * `TrackMixer.volume`, a `DeviceParameter`) so it can be resolved by reference and
+ * written through {@link FakeLiveBridge.setParam}: a write to `track:N/mixer/volume`
+ * persists because it mutates this stored object, not a throwaway. `panning` /
+ * `sendCount` stay minimal scalars (no method addresses them yet).
+ */
+interface MixerModel {
+  volume: ParamModel;
+  panning: number;
+  sendCount: number;
+}
+
 interface TrackModel {
   kind: TrackKind;
   name: string;
@@ -113,7 +141,21 @@ interface TrackModel {
   clipSlots: ClipSlotModel[];
   arrangementClips: ClipModel[];
   devices: DeviceModel[];
-  mixer: { volume: number; panning: number; sendCount: number };
+  mixer: MixerModel;
+}
+
+interface SceneModel {
+  name: string;
+  /** Scene tempo, or null when the scene does not override the Set tempo. */
+  tempo: number | null;
+  signatureNumerator: number;
+  signatureDenominator: number;
+}
+
+interface CuePointModel {
+  /** Position in beats. */
+  time: number;
+  name: string;
 }
 
 interface SongModel {
@@ -126,8 +168,10 @@ interface SongModel {
   gridIsTriplet: boolean;
   tracks: TrackModel[];
   returnTrackCount: number;
-  sceneCount: number;
-  cuePointCount: number;
+  /** Real scene objects; `sceneCount` is derived from this array's length. */
+  scenes: SceneModel[];
+  /** Real cue-point objects; `cuePointCount` is derived from this array's length. */
+  cuePoints: CuePointModel[];
 }
 
 /**
@@ -153,6 +197,67 @@ function makeParam(
   isQuantized = false,
 ): ParamModel {
   return { name, min, max, isQuantized, defaultValue: value, value };
+}
+
+/**
+ * Build a {@link MixerModel} with the volume modeled as a `DeviceParameter`-style
+ * {@link ParamModel}. Its internal range is `0..1` with unity (`defaultValue`) at
+ * `0.85`, matching the unity value the seeds already used when `volume` was a bare
+ * number, so existing levels stay coherent. `value` defaults to that unity point.
+ */
+function makeMixer(volume = 0.85, panning = 0.5, sendCount = 0): MixerModel {
+  return {
+    volume: {
+      name: 'Volume',
+      min: 0,
+      max: 1,
+      isQuantized: false,
+      defaultValue: 0.85,
+      value: volume,
+    },
+    panning,
+    sendCount,
+  };
+}
+
+/** Build a looping MIDI {@link ClipModel} for a Session slot (loopEnd = endMarker = length). */
+function midiLoop(
+  name: string,
+  lengthBeats: number,
+  color: number,
+  notes: readonly NoteModel[],
+): ClipModel {
+  return {
+    isMidi: true,
+    name,
+    startTime: 0,
+    duration: lengthBeats,
+    looping: true,
+    loopStart: 0,
+    loopEnd: lengthBeats,
+    endMarker: lengthBeats,
+    color,
+    muted: false,
+    notes: notes.map((n) => ({ ...n })),
+  };
+}
+
+/** Build a looping audio {@link ClipModel} for a Session slot, referenced by file. */
+function audioLoop(name: string, lengthBeats: number, color: number, filePath: string): ClipModel {
+  return {
+    isMidi: false,
+    name,
+    startTime: 0,
+    duration: lengthBeats,
+    looping: true,
+    loopStart: 0,
+    loopEnd: lengthBeats,
+    endMarker: lengthBeats,
+    color,
+    muted: false,
+    notes: [],
+    filePath,
+  };
 }
 
 /** Deep clone of the whole song, used for transaction snapshots / rollback. */
@@ -240,6 +345,7 @@ export class FakeLiveBridge implements LiveBridge {
       looping: true,
       loopStart: 0,
       loopEnd: 4,
+      endMarker: 4,
       color: 0,
       muted: false,
       notes: notes.map(noteFromDTO),
@@ -262,14 +368,101 @@ export class FakeLiveBridge implements LiveBridge {
           clipSlots: [{ clip }, { clip: null }],
           arrangementClips: [],
           devices: [],
-          mixer: { volume: 0.85, panning: 0.5, sendCount: 0 },
+          mixer: makeMixer(0.85, 0.5, 0),
         },
       ],
       returnTrackCount: 0,
-      sceneCount: 1,
-      cuePointCount: 0,
+      scenes: [{ name: 'Scene 1', tempo: null, signatureNumerator: 4, signatureDenominator: 4 }],
+      cuePoints: [],
     };
     return new FakeLiveBridge(song);
+  }
+
+  /**
+   * A Session-to-Song (W5) fixture: three scenes (`Intro` / `Verse` / `Chorus`) and
+   * two tracks (one MIDI, one audio) whose clip slots are populated per scene, so a
+   * scene index maps to a clip-slot index. The MIDI clips carry notes; the audio
+   * clips carry a `filePath`. No Arrangement clips yet (the build writes them). Use
+   * this to drive `planArrangement` + the recreate-into-Arrangement handler:
+   *  - track 0 `Keys` (midi): clips in scenes 0 + 1 + 2,
+   *  - track 1 `Drums` (audio): clips in scenes 1 + 2 (scene 0 slot is empty, so the
+   *    planner emits no placement for `Drums` in the Intro).
+   */
+  static seededSession(): FakeLiveBridge {
+    return new FakeLiveBridge(FakeLiveBridge.#seedSessionModel());
+  }
+
+  /**
+   * A Set Janitor (W6) fixture: a deliberately messy Set so `detectIssues` has every
+   * issue kind to find and the handler has rename / recolor / delete fixes to apply.
+   *  - track 0 `Bass` (midi): a real clip, off-palette color, plus a clip whose
+   *    `endMarker` overruns its `loopEnd` (loop-overrun issue),
+   *  - track 1 `1-MIDI` (midi): a placeholder track name and an unnamed clip
+   *    `"Audio 3"` (placeholder-name issues),
+   *  - track 2 `Empty` (audio): no clips, no devices (empty-track issue).
+   *
+   * The palette the off-palette rule checks is the stage-2 transform's business; the
+   * fixture just plants a clearly non-standard color (`12345`) and standard ones so a
+   * rule can tell them apart.
+   */
+  static seededMessySet(): FakeLiveBridge {
+    return new FakeLiveBridge(FakeLiveBridge.#seedMessyModel());
+  }
+
+  /**
+   * A focused Gain Stage Doctor (W3) fixture: a single audio track `Gtr` with a known
+   * mixer volume (`0.6`, below the `0.85` unity) and one audio Arrangement clip, so a
+   * test can read {@link FakeLiveBridge.getTrackMixer}, compute a trim, and write it
+   * back through {@link FakeLiveBridge.setParam} on `track:0/mixer/volume`. (The
+   * broader {@link FakeLiveBridge.seeded} Set also has an audio track with a mixer;
+   * this one isolates the mixer round-trip.)
+   */
+  static seededAudioTrack(): FakeLiveBridge {
+    const clip: ClipModel = {
+      isMidi: false,
+      name: 'Gtr Take',
+      startTime: 0,
+      duration: 8,
+      looping: false,
+      loopStart: 0,
+      loopEnd: 8,
+      endMarker: 8,
+      color: 8421504,
+      muted: false,
+      notes: [],
+      filePath: '/audio/gtr.wav',
+    };
+    const song: SongModel = {
+      tempo: 120,
+      rootNote: 0,
+      scaleName: 'Major',
+      scaleMode: false,
+      scaleIntervals: [0, 2, 4, 5, 7, 9, 11],
+      gridQuantization: '1/16',
+      gridIsTriplet: false,
+      tracks: [
+        {
+          kind: 'audio',
+          name: 'Gtr',
+          mute: false,
+          solo: false,
+          arm: false,
+          clipSlots: [{ clip: null }],
+          arrangementClips: [clip],
+          devices: [],
+          mixer: makeMixer(0.6, 0.5, 2),
+        },
+      ],
+      returnTrackCount: 2,
+      scenes: [{ name: 'Scene 1', tempo: null, signatureNumerator: 4, signatureDenominator: 4 }],
+      cuePoints: [],
+    };
+    return new FakeLiveBridge(song);
+  }
+
+  /** The id of the mixer volume parameter of track 0 (`track:0/mixer/volume`). */
+  get firstMixerVolumeId(): ParamId {
+    return mixerVolumeParamId(0);
   }
 
   /**
@@ -330,6 +523,7 @@ export class FakeLiveBridge implements LiveBridge {
             looping: true,
             loopStart: 0,
             loopEnd: 4,
+            endMarker: 4,
             color: 16711680,
             muted: false,
             notes: [
@@ -344,7 +538,7 @@ export class FakeLiveBridge implements LiveBridge {
       ],
       arrangementClips: [],
       devices: [{ name: 'Drum Rack', parameters: [makeParam('Macro 1', 0, 127, 0)] }],
-      mixer: { volume: 0.85, panning: 0.5, sendCount: 2 },
+      mixer: makeMixer(0.85, 0.5, 2),
     };
     const bass: TrackModel = {
       kind: 'midi',
@@ -362,6 +556,7 @@ export class FakeLiveBridge implements LiveBridge {
             looping: true,
             loopStart: 0,
             loopEnd: 4,
+            endMarker: 4,
             color: 255,
             muted: false,
             notes: [
@@ -380,13 +575,14 @@ export class FakeLiveBridge implements LiveBridge {
           looping: false,
           loopStart: 0,
           loopEnd: 8,
+          endMarker: 8,
           color: 255,
           muted: false,
           notes: [{ pitch: 36, startTime: 0, duration: 4, velocity: 100 }],
         },
       ],
       devices: [],
-      mixer: { volume: 0.8, panning: 0.5, sendCount: 2 },
+      mixer: makeMixer(0.8, 0.5, 2),
     };
     const vocals: TrackModel = {
       kind: 'audio',
@@ -406,16 +602,18 @@ export class FakeLiveBridge implements LiveBridge {
           looping: false,
           loopStart: 0,
           loopEnd: 8,
+          endMarker: 8,
           color: 16777215,
           muted: false,
           notes: [],
+          filePath: '/audio/vox_take.wav',
         },
       ],
       devices: [
         { name: 'EQ Eight', parameters: [makeParam('1 Frequency A', 20, 20000, 1000)] },
         { name: 'Compressor', parameters: [makeParam('Threshold', -60, 0, -12)] },
       ],
-      mixer: { volume: 0.9, panning: 0.5, sendCount: 2 },
+      mixer: makeMixer(0.9, 0.5, 2),
     };
     return {
       tempo: 124,
@@ -427,8 +625,134 @@ export class FakeLiveBridge implements LiveBridge {
       gridIsTriplet: false,
       tracks: [drums, bass, vocals],
       returnTrackCount: 2,
-      sceneCount: 2,
-      cuePointCount: 0,
+      scenes: [
+        { name: 'Verse', tempo: null, signatureNumerator: 4, signatureDenominator: 4 },
+        { name: 'Chorus', tempo: null, signatureNumerator: 4, signatureDenominator: 4 },
+      ],
+      cuePoints: [],
+    };
+  }
+
+  /** Backs {@link FakeLiveBridge.seededSession}; see that method's doc for the layout. */
+  static #seedSessionModel(): SongModel {
+    const keys: TrackModel = {
+      kind: 'midi',
+      name: 'Keys',
+      mute: false,
+      solo: false,
+      arm: false,
+      clipSlots: [
+        { clip: midiLoop('Intro Keys', 4, 8421504, [{ pitch: 60, startTime: 0, duration: 4 }]) },
+        { clip: midiLoop('Verse Keys', 4, 8421504, [{ pitch: 62, startTime: 0, duration: 2 }]) },
+        { clip: midiLoop('Chorus Keys', 4, 8421504, [{ pitch: 64, startTime: 0, duration: 1 }]) },
+      ],
+      arrangementClips: [],
+      devices: [],
+      mixer: makeMixer(0.85, 0.5, 0),
+    };
+    const drums: TrackModel = {
+      kind: 'audio',
+      name: 'Drums',
+      mute: false,
+      solo: false,
+      arm: false,
+      clipSlots: [
+        // Scene 0 (Intro) is empty for Drums: the planner emits no Drums placement there.
+        { clip: null },
+        { clip: audioLoop('Verse Beat', 4, 255, '/audio/verse_beat.wav') },
+        { clip: audioLoop('Chorus Beat', 4, 255, '/audio/chorus_beat.wav') },
+      ],
+      arrangementClips: [],
+      devices: [],
+      mixer: makeMixer(0.85, 0.5, 0),
+    };
+    return {
+      tempo: 120,
+      rootNote: 0,
+      scaleName: 'Major',
+      scaleMode: true,
+      scaleIntervals: [0, 2, 4, 5, 7, 9, 11],
+      gridQuantization: '1/16',
+      gridIsTriplet: false,
+      tracks: [keys, drums],
+      returnTrackCount: 0,
+      scenes: [
+        { name: 'Intro', tempo: null, signatureNumerator: 4, signatureDenominator: 4 },
+        { name: 'Verse', tempo: null, signatureNumerator: 4, signatureDenominator: 4 },
+        { name: 'Chorus', tempo: null, signatureNumerator: 4, signatureDenominator: 4 },
+      ],
+      cuePoints: [],
+    };
+  }
+
+  /** Backs {@link FakeLiveBridge.seededMessySet}; see that method's doc for the layout. */
+  static #seedMessyModel(): SongModel {
+    // A clip whose content end marker overruns its loop end (loop-overrun issue).
+    const overrun: ClipModel = {
+      isMidi: true,
+      name: 'Loop',
+      startTime: 0,
+      duration: 4,
+      looping: true,
+      loopStart: 0,
+      loopEnd: 4,
+      endMarker: 6,
+      color: 255,
+      muted: false,
+      notes: [{ pitch: 36, startTime: 0, duration: 1, velocity: 100 }],
+    };
+    const bass: TrackModel = {
+      kind: 'midi',
+      name: 'Bass',
+      mute: false,
+      solo: false,
+      arm: false,
+      clipSlots: [
+        // Off-palette color (12345 is not a standard Live clip color).
+        { clip: midiLoop('Bassline', 4, 12345, [{ pitch: 36, startTime: 0, duration: 1 }]) },
+        { clip: overrun },
+      ],
+      arrangementClips: [],
+      devices: [{ name: 'Operator', parameters: [makeParam('Volume', 0, 1, 0.7)] }],
+      mixer: makeMixer(0.85, 0.5, 0),
+    };
+    const placeholder: TrackModel = {
+      kind: 'midi',
+      // Placeholder track name (Live's default-style "<n>-MIDI").
+      name: '1-MIDI',
+      mute: false,
+      solo: false,
+      arm: false,
+      // Placeholder clip name ("Audio 3"-style default).
+      clipSlots: [{ clip: midiLoop('Audio 3', 4, 16711680, []) }],
+      arrangementClips: [],
+      devices: [],
+      mixer: makeMixer(0.85, 0.5, 0),
+    };
+    const empty: TrackModel = {
+      kind: 'audio',
+      // Empty track: no clips, no devices.
+      name: 'Empty',
+      mute: false,
+      solo: false,
+      arm: false,
+      clipSlots: [{ clip: null }],
+      arrangementClips: [],
+      devices: [],
+      mixer: makeMixer(0.85, 0.5, 0),
+    };
+    return {
+      tempo: 128,
+      rootNote: 0,
+      scaleName: 'Minor',
+      scaleMode: true,
+      scaleIntervals: [0, 2, 3, 5, 7, 8, 10],
+      gridQuantization: '1/16',
+      gridIsTriplet: false,
+      tracks: [bass, placeholder, empty],
+      returnTrackCount: 0,
+      scenes: [{ name: 'Scene 1', tempo: null, signatureNumerator: 4, signatureDenominator: 4 }],
+      cuePoints: [],
     };
   }
 
@@ -465,6 +789,30 @@ export class FakeLiveBridge implements LiveBridge {
     return this.#resolveClipUnderTrack(id, track, rest);
   }
 
+  /**
+   * Resolve any clip id to its model PLUS its `location` and (for Session clips) its
+   * `slotId`, so {@link FakeLiveBridge.setClipProps} can rebuild the post-write
+   * {@link ClipInfo} with the same shape {@link FakeLiveBridge.listClips} produces.
+   */
+  #resolveClipWithLocation(id: ClipId): {
+    clip: ClipModel;
+    location: ClipLocation;
+    slotId?: ClipSlotId;
+  } {
+    const segments = parsePath(id);
+    const head = segments[0];
+    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
+      throw wrongType(id, 'clip');
+    }
+    const trackIndex = head.index;
+    const clip = this.#resolveClip(id);
+    const second = segments[1];
+    if (second !== undefined && second.kind === 'clipslot' && 'index' in second) {
+      return { clip, location: 'session', slotId: clipSlotId(trackIndex, second.index) };
+    }
+    return { clip, location: 'arrangement' };
+  }
+
   #resolveClipUnderTrack(id: ClipId, track: TrackModel, rest: readonly PathSegment[]): ClipModel {
     const first = rest[0];
     if (first === undefined) {
@@ -496,6 +844,62 @@ export class FakeLiveBridge implements LiveBridge {
     throw wrongType(id, 'clip');
   }
 
+  /**
+   * Resolve a clip id to its CONTAINER for deletion. A Session clip
+   * (`track:N/clipslot:M/clip`) resolves to its slot (deletion nulls the slot, which
+   * remains and then reports empty, mirroring `ClipSlot.deleteClip()`); an
+   * Arrangement clip (`track:N/clip:M`) resolves to the track's `arrangementClips`
+   * array + index (deletion splices it, mirroring `Track.deleteClip(clip)`). Unlike
+   * {@link FakeLiveBridge.#resolveClip}, this hands back the container so the delete
+   * can detach the clip rather than just read it.
+   */
+  #resolveClipForDelete(
+    id: ClipId,
+  ):
+    | { readonly kind: 'session'; readonly slot: ClipSlotModel }
+    | { readonly kind: 'arrangement'; readonly clips: ClipModel[]; readonly index: number } {
+    const segments = parsePath(id);
+    const head = segments[0];
+    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
+      throw wrongType(id, 'clip');
+    }
+    const track = this.#song.tracks[head.index];
+    if (track === undefined) {
+      throw staleReference(id);
+    }
+    const first = segments[1];
+    if (first === undefined) {
+      throw wrongType(id, 'clip');
+    }
+    // Arrangement clip: track:N/clip:M
+    if (first.kind === 'clip' && 'index' in first) {
+      if (segments.length !== 2) {
+        throw wrongType(id, 'clip');
+      }
+      const clip = track.arrangementClips[first.index];
+      if (clip === undefined) {
+        throw staleReference(id);
+      }
+      return { kind: 'arrangement', clips: track.arrangementClips, index: first.index };
+    }
+    // Session clip: track:N/clipslot:M/clip
+    if (first.kind === 'clipslot' && 'index' in first) {
+      const slot = track.clipSlots[first.index];
+      if (slot === undefined) {
+        throw staleReference(id);
+      }
+      const terminal = segments[2];
+      if (terminal === undefined || terminal.kind !== 'clip' || segments.length !== 3) {
+        throw wrongType(id, 'clip');
+      }
+      if (slot.clip === null) {
+        throw staleReference(id, `Clip slot "${id}" is empty.`);
+      }
+      return { kind: 'session', slot };
+    }
+    throw wrongType(id, 'clip');
+  }
+
   /** Resolve a clip-slot id (`track:N/clipslot:M`) to its mutable model + indices. */
   #resolveSlot(id: ClipSlotId): { trackIndex: number; slotIndex: number; slot: ClipSlotModel } {
     const segments = parsePath(id);
@@ -521,16 +925,35 @@ export class FakeLiveBridge implements LiveBridge {
     return { trackIndex: head.index, slotIndex: second.index, slot };
   }
 
-  /** Resolve a parameter id (`track:N/device:D/param:P`) to its model + ids. */
-  #resolveParam(id: ParamId): { trackIndex: number; deviceIndex: number; param: ParamModel } {
+  /**
+   * Resolve a parameter id to its mutable {@link ParamModel}. Two id shapes resolve:
+   * a device-chain parameter `track:N/device:D/param:P`, and a mixer volume
+   * `track:N/mixer/volume`. The model is returned BY REFERENCE so a follow-up
+   * {@link FakeLiveBridge.setParam} that assigns `param.value` persists.
+   */
+  #resolveParam(id: ParamId): { param: ParamModel } {
     const segments = parsePath(id);
     const head = segments[0];
+    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
+      throw wrongType(id, 'device parameter');
+    }
+    const track = this.#song.tracks[head.index];
+    if (track === undefined) {
+      throw staleReference(id);
+    }
+    const second = segments[1];
+    // Mixer volume parameter: track:N/mixer/volume.
+    if (second !== undefined && second.kind === 'mixer') {
+      const terminal = segments[2];
+      if (terminal === undefined || terminal.kind !== 'volume' || segments.length !== 3) {
+        throw wrongType(id, 'mixer volume parameter');
+      }
+      return { param: track.mixer.volume };
+    }
+    // Device-chain parameter: track:N/device:D/param:P.
     const dev = segments[1];
     const par = segments[2];
     if (
-      head === undefined ||
-      head.kind !== 'track' ||
-      !('index' in head) ||
       dev === undefined ||
       dev.kind !== 'device' ||
       !('index' in dev) ||
@@ -541,10 +964,6 @@ export class FakeLiveBridge implements LiveBridge {
     ) {
       throw wrongType(id, 'device parameter');
     }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
-    }
     const device = track.devices[dev.index];
     if (device === undefined) {
       throw staleReference(id);
@@ -553,7 +972,7 @@ export class FakeLiveBridge implements LiveBridge {
     if (param === undefined) {
       throw staleReference(id);
     }
-    return { trackIndex: head.index, deviceIndex: dev.index, param };
+    return { param };
   }
 
   // --- reads (synchronous) ---
@@ -570,8 +989,8 @@ export class FakeLiveBridge implements LiveBridge {
       gridIsTriplet: s.gridIsTriplet,
       trackCount: s.tracks.length,
       returnTrackCount: s.returnTrackCount,
-      sceneCount: s.sceneCount,
-      cuePointCount: s.cuePointCount,
+      sceneCount: s.scenes.length,
+      cuePointCount: s.cuePoints.length,
       tracks: s.tracks.map((track, index) => ({
         id: trackId(index),
         name: track.name,
@@ -637,6 +1056,17 @@ export class FakeLiveBridge implements LiveBridge {
       });
     });
     return out;
+  }
+
+  listScenes(): readonly SceneInfo[] {
+    return this.#song.scenes.map((scene, index) => this.#sceneInfo(index, scene));
+  }
+
+  getTrackMixer(id: TrackId): TrackMixerInfo {
+    const { index, track } = this.#resolveTrack(id);
+    // Expose the volume as an addressable parameter: its id is track:N/mixer/volume,
+    // which #resolveParam routes, so a handler can write it through setParam (one undo).
+    return { volume: this.#paramInfo(mixerVolumeParamId(index), track.mixer.volume) };
   }
 
   // --- mutations (async; each is one undo step unless inside a transaction) ---
@@ -715,6 +1145,7 @@ export class FakeLiveBridge implements LiveBridge {
         looping: true,
         loopStart: 0,
         loopEnd: lengthBeats,
+        endMarker: lengthBeats,
         color: 0,
         muted: false,
         notes: [],
@@ -726,6 +1157,141 @@ export class FakeLiveBridge implements LiveBridge {
         clip,
         clipSlotId(trackIndex, slotIndex),
       );
+    });
+  }
+
+  async setClipProps(id: ClipId, props: { name?: string; color?: number }): Promise<ClipInfo> {
+    return this.#mutate(() => {
+      const { clip, location, slotId } = this.#resolveClipWithLocation(id);
+      if (props.name !== undefined) clip.name = props.name;
+      if (props.color !== undefined) clip.color = props.color;
+      return this.#clipInfo(id, location, clip, slotId);
+    });
+  }
+
+  async deleteTrack(id: TrackId): Promise<void> {
+    return this.#mutate(() => {
+      const { index } = this.#resolveTrack(id);
+      this.#song.tracks.splice(index, 1);
+    });
+  }
+
+  async deleteClip(id: ClipId): Promise<void> {
+    return this.#mutate(() => {
+      const target = this.#resolveClipForDelete(id);
+      if (target.kind === 'session') {
+        // Empties the slot (the slot remains and then reports empty).
+        target.slot.clip = null;
+      } else {
+        target.clips.splice(target.index, 1);
+      }
+    });
+  }
+
+  async createArrangementMidiClip(
+    id: TrackId,
+    startBeat: number,
+    lengthBeats: number,
+  ): Promise<ClipInfo> {
+    return this.#mutate(() => {
+      const { index, track } = this.#resolveTrack(id);
+      if (track.kind !== 'midi') {
+        throw wrongType(id, 'MIDI track');
+      }
+      if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
+        throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
+      }
+      if (!(lengthBeats > 0)) {
+        throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
+      }
+      const clip: ClipModel = {
+        isMidi: true,
+        name: 'MIDI Clip',
+        startTime: startBeat,
+        duration: lengthBeats,
+        looping: false,
+        loopStart: startBeat,
+        loopEnd: startBeat + lengthBeats,
+        endMarker: startBeat + lengthBeats,
+        color: 0,
+        muted: false,
+        notes: [],
+      };
+      track.arrangementClips.push(clip);
+      const clipIndex = track.arrangementClips.length - 1;
+      return this.#clipInfo(arrangementClipId(index, clipIndex), 'arrangement', clip);
+    });
+  }
+
+  async createArrangementAudioClip(id: TrackId, args: CreateAudioClipArgs): Promise<ClipInfo> {
+    return this.#mutate(() => {
+      const { index, track } = this.#resolveTrack(id);
+      if (track.kind !== 'audio') {
+        throw wrongType(id, 'audio track');
+      }
+      if (args.filePath.length === 0) {
+        throw badInput('filePath must be a non-empty absolute path.');
+      }
+      if (!(args.startTime >= 0) || !Number.isFinite(args.startTime)) {
+        throw badInput(`startTime ${String(args.startTime)} must be a non-negative number.`);
+      }
+      if (!(args.duration > 0)) {
+        throw badInput(`duration ${String(args.duration)} must be > 0.`);
+      }
+      const clip: ClipModel = {
+        isMidi: false,
+        name: 'Audio Clip',
+        startTime: args.startTime,
+        duration: args.duration,
+        looping: false,
+        loopStart: args.startTime,
+        loopEnd: args.startTime + args.duration,
+        endMarker: args.startTime + args.duration,
+        color: 0,
+        muted: false,
+        notes: [],
+        filePath: args.filePath,
+      };
+      track.arrangementClips.push(clip);
+      const clipIndex = track.arrangementClips.length - 1;
+      return this.#clipInfo(arrangementClipId(index, clipIndex), 'arrangement', clip);
+    });
+  }
+
+  async clearClipsInRange(id: TrackId, startBeat: number, endBeat: number): Promise<void> {
+    return this.#mutate(() => {
+      const { track } = this.#resolveTrack(id);
+      if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
+        throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
+      }
+      if (!(endBeat > startBeat)) {
+        throw badInput(
+          `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
+        );
+      }
+      // Clips fully inside [startBeat, endBeat) are removed; clips overlapping a
+      // boundary are TRUNCATED to the part outside the range (mirroring the SDK's
+      // clearClipsInRange, which truncates rather than deletes boundary clips).
+      track.arrangementClips = clearRange(track.arrangementClips, startBeat, endBeat);
+    });
+  }
+
+  async createCuePoint(beat: number, name: string): Promise<CuePointInfo> {
+    return this.#mutate(() => {
+      if (!Number.isFinite(beat) || beat < 0) {
+        throw badInput(`Cue point beat ${String(beat)} must be a non-negative number.`);
+      }
+      this.#song.cuePoints.push({ time: beat, name });
+      // Keep cue points ordered by time, the way Live presents locators; the returned
+      // id reflects the post-insert index.
+      this.#song.cuePoints.sort((a, b) => a.time - b.time);
+      const cpIndex = this.#song.cuePoints.findIndex((c) => c.time === beat && c.name === name);
+      const resolved = this.#song.cuePoints[cpIndex];
+      if (resolved === undefined) {
+        // Unreachable: we just inserted it. Guards noUncheckedIndexedAccess.
+        throw sdkRejected('Cue point creation did not yield a cue point.');
+      }
+      return this.#cuePointInfo(cpIndex, resolved);
     });
   }
 
@@ -866,7 +1432,7 @@ export class FakeLiveBridge implements LiveBridge {
 
   #trackInfo(index: number, track: TrackModel): TrackInfo {
     const mixer: MixerInfo = {
-      volume: track.mixer.volume,
+      volume: track.mixer.volume.value,
       panning: track.mixer.panning,
       sendCount: track.mixer.sendCount,
     };
@@ -899,11 +1465,14 @@ export class FakeLiveBridge implements LiveBridge {
       looping: clip.looping,
       loopStart: clip.loopStart,
       loopEnd: clip.loopEnd,
+      endMarker: clip.endMarker,
       color: clip.color,
       muted: clip.muted,
     };
-    // Omit slotId when absent (exactOptionalPropertyTypes): never set key: undefined.
-    return slotId === undefined ? base : { ...base, slotId };
+    // Omit slotId / filePath when absent (exactOptionalPropertyTypes): never set a
+    // key to undefined. filePath is present for audio clips only.
+    const withSlot = slotId === undefined ? base : { ...base, slotId };
+    return clip.filePath === undefined ? withSlot : { ...withSlot, filePath: clip.filePath };
   }
 
   /** An empty Session clip slot, reported so the model can see where to create a clip. */
@@ -921,6 +1490,7 @@ export class FakeLiveBridge implements LiveBridge {
       looping: false,
       loopStart: 0,
       loopEnd: 0,
+      endMarker: 0,
       color: 0,
       muted: false,
     };
@@ -948,6 +1518,20 @@ export class FakeLiveBridge implements LiveBridge {
     };
   }
 
+  #sceneInfo(index: number, scene: SceneModel): SceneInfo {
+    return {
+      id: sceneId(index),
+      name: scene.name,
+      tempo: scene.tempo,
+      signatureNumerator: scene.signatureNumerator,
+      signatureDenominator: scene.signatureDenominator,
+    };
+  }
+
+  #cuePointInfo(index: number, cuePoint: CuePointModel): CuePointInfo {
+    return { id: cuePointId(index), time: cuePoint.time, name: cuePoint.name };
+  }
+
   static #emptyTrack(kind: TrackKind, name: string): TrackModel {
     return {
       kind,
@@ -958,9 +1542,63 @@ export class FakeLiveBridge implements LiveBridge {
       clipSlots: [{ clip: null }],
       arrangementClips: [],
       devices: [],
-      mixer: { volume: 0.85, panning: 0.5, sendCount: 0 },
+      mixer: makeMixer(),
     };
   }
+}
+
+/**
+ * Apply `Track.clearClipsInRange(start, end)` semantics to an arrangement clip list:
+ * clips fully inside `[start, end)` are removed, clips that overlap a boundary are
+ * TRUNCATED to the part outside the range, and clips fully outside are kept as-is.
+ * The geometry fields (`startTime` / `duration` / `loopStart` / `loopEnd` /
+ * `endMarker`) are adjusted to the surviving region. Returns a fresh array; clips it
+ * keeps unchanged are returned by reference, truncated clips are new objects.
+ *
+ * A clip that spans the whole range (starts before `start` and ends after `end`) is
+ * truncated to the portion before `start`; the SDK would split it into two, but the
+ * fake's only caller (Session-to-Song clearing a target range before it writes) does
+ * not depend on the split, so this keeps the model simple and the truncate-not-delete
+ * contract intact.
+ */
+function clearRange(clips: readonly ClipModel[], start: number, end: number): ClipModel[] {
+  const out: ClipModel[] = [];
+  for (const clip of clips) {
+    const clipStart = clip.startTime;
+    const clipEnd = clip.startTime + clip.duration;
+    const fullyOutside = clipEnd <= start || clipStart >= end;
+    if (fullyOutside) {
+      out.push(clip);
+      continue;
+    }
+    const fullyInside = clipStart >= start && clipEnd <= end;
+    if (fullyInside) {
+      continue;
+    }
+    // Overlaps a boundary: truncate to the surviving region.
+    let newStart = clipStart;
+    let newEnd = clipEnd;
+    if (clipStart < start) {
+      // Keep the head before `start`.
+      newEnd = start;
+    } else {
+      // clipStart is inside the range, so keep the tail after `end`.
+      newStart = end;
+    }
+    const newDuration = newEnd - newStart;
+    if (!(newDuration > 0)) {
+      continue;
+    }
+    out.push({
+      ...clip,
+      startTime: newStart,
+      duration: newDuration,
+      loopStart: newStart,
+      loopEnd: newEnd,
+      endMarker: newEnd,
+    });
+  }
+  return out;
 }
 
 /** Minimal thenable check used to enforce the sync-callback / Promise-return rule. */

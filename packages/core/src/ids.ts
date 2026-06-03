@@ -36,8 +36,19 @@ export type IndexedSegmentKind =
  */
 export type ClipSegmentKind = 'clip';
 
+/**
+ * Bare (index-less) terminal kinds that address the single such object hanging off
+ * their parent rather than one of an array. `mixer` is a track's mixer
+ * (`track:N/mixer`), and `volume` is that mixer's volume `DeviceParameter`
+ * (`track:N/mixer/volume`). They mirror the SDK's `Track.mixer` (a `TrackMixer`) and
+ * `TrackMixer.volume` (a `DeviceParameter`), and let the mixer volume be addressed by
+ * a {@link ParamId} that {@link import("./live-bridge.js").LiveBridge.setParam} can
+ * write, distinct from device-chain `track:N/device:D/param:P` parameters.
+ */
+export type MixerSegmentKind = 'mixer' | 'volume';
+
 /** Every segment kind a path id may contain. */
-export type SegmentKind = IndexedSegmentKind | ClipSegmentKind;
+export type SegmentKind = IndexedSegmentKind | ClipSegmentKind | MixerSegmentKind;
 
 /**
  * One parsed segment of a path id.
@@ -50,7 +61,8 @@ export type SegmentKind = IndexedSegmentKind | ClipSegmentKind;
 export type PathSegment =
   | { readonly kind: IndexedSegmentKind; readonly index: number }
   | { readonly kind: ClipSegmentKind; readonly index: number }
-  | { readonly kind: ClipSegmentKind };
+  | { readonly kind: ClipSegmentKind }
+  | { readonly kind: MixerSegmentKind };
 
 /**
  * A path id is just a branded string. The brand stops a raw `string` from being
@@ -123,6 +135,9 @@ function renderSegment(segment: PathSegment): string {
 function parseSegment(raw: string): PathSegment | null {
   if (raw === 'clip') {
     return { kind: 'clip' };
+  }
+  if (raw === 'mixer' || raw === 'volume') {
+    return { kind: raw };
   }
   const sep = raw.indexOf(KIND_INDEX_SEPARATOR);
   if (sep <= 0 || sep === raw.length - 1) {
@@ -302,4 +317,18 @@ export function paramId(track: number, device: number, param: number): ParamId {
     { kind: 'device', index: device },
     { kind: 'param', index: param },
   ]);
+}
+
+/**
+ * Build the id of a track's mixer volume parameter, e.g. `track:2/mixer/volume`.
+ *
+ * Mirrors `Track.mixer.volume` (a `DeviceParameter`). This is a {@link ParamId}, so
+ * it is a valid argument to {@link import("./live-bridge.js").LiveBridge.setParam};
+ * Gain Stage Doctor (W3) reads it via
+ * {@link import("./live-bridge.js").LiveBridge.getTrackMixer} and writes the trim
+ * through the existing one-undo `setParam` path. Distinct from a device-chain
+ * `track:N/device:D/param:P` id.
+ */
+export function mixerVolumeParamId(track: number): ParamId {
+  return buildPath([{ kind: 'track', index: track }, { kind: 'mixer' }, { kind: 'volume' }]);
 }
