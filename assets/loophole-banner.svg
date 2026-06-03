@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 240" width="760" height="240" role="img" aria-labelledby="title desc">
+  <title id="title">Loophole</title>
+  <desc id="desc">Loophole, an MCP server and extension kit for Ableton Live, built on the official Extensions SDK.</desc>
+
+  <!-- self-contained dark panel so the banner reads identically in GitHub light and dark themes -->
+  <rect x="0" y="0" width="760" height="240" rx="18" fill="#0B0E14"/>
+  <rect x="0.75" y="0.75" width="758.5" height="238.5" rx="17.25" fill="none" stroke="#1F2630" stroke-width="1.5"/>
+
+  <!-- logomark: an open ring, a loop with a way through -->
+  <g transform="translate(118 120)">
+    <circle r="44" fill="none" stroke="#E9A23B" stroke-width="13" stroke-linecap="round"
+            stroke-dasharray="214 63" stroke-dashoffset="-31" transform="rotate(-128)"/>
+    <circle r="7.5" fill="#E9A23B"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="202" y="128" font-family="'Inter','Segoe UI',system-ui,-apple-system,Helvetica,Arial,sans-serif"
+        font-size="84" font-weight="700" letter-spacing="-1.5" fill="#E6EAF0">loophole</text>
+
+  <!-- tagline -->
+  <text x="205" y="170" font-family="'Inter','Segoe UI',system-ui,-apple-system,Helvetica,Arial,sans-serif"
+        font-size="22" font-weight="500" fill="#8A93A3">An MCP server and extension kit for Ableton Live</text>
+
+  <!-- credit line -->
+  <text x="205" y="198" font-family="'Inter','Segoe UI',system-ui,-apple-system,Helvetica,Arial,sans-serif"
+        font-size="16" font-weight="500" letter-spacing="0.2" fill="#828C9C">built on Ableton's official Extensions SDK</text>
+</svg>

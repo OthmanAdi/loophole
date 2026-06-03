@@ -3,4 +3,5 @@ dist
 coverage
 pnpm-lock.yaml
 *.tgz
+*.svg
 .git
