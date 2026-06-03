@@ -62,15 +62,33 @@ describe('FakeLiveBridge: synchronous getters', () => {
     expect(bridge.findTrack('VOCAL').map((t) => t.name)).toEqual(['Vocals']);
     expect(bridge.findTrack('nope')).toEqual([]);
   });
+});
 
-  it('listDeviceParams returns addressable parameter ids', () => {
+describe('FakeLiveBridge: async device-value reads (getValue is the one async getter)', () => {
+  it('listDeviceParams resolves to addressable parameter ids', async () => {
     const bridge = FakeLiveBridge.seeded();
+    // listDeviceParams is async: a parameter's live value comes from
+    // DeviceParameter.getValue(), the one async SDK getter (01_SDK_MAP §2).
     // Vocals (track 2) has EQ Eight + Compressor, one param each.
-    const params = bridge.listDeviceParams(trackId(2));
+    const params = await bridge.listDeviceParams(trackId(2));
     expect(params.length).toBe(2);
     expect(params[0]?.id).toBe(paramId(2, 0, 0));
     expect(params[1]?.id).toBe(paramId(2, 1, 0));
     expect(params[0]?.name).toBe('1 Frequency A');
+  });
+
+  it('listDeviceParams is a pure read: it adds no undo step', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    expect(bridge.transactionCount).toBe(0);
+    await bridge.listDeviceParams(trackId(2));
+    expect(bridge.transactionCount).toBe(0);
+  });
+
+  it('listDeviceParams on an unknown track rejects with STALE_REFERENCE', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    await expect(bridge.listDeviceParams(trackId(99))).rejects.toSatisfy((e: unknown) =>
+      isBridgeErrorOfCode(e, 'STALE_REFERENCE'),
+    );
   });
 });
 

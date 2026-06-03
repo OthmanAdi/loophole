@@ -114,8 +114,8 @@ describe('ring 2: write tools over MCP (response + state + one undo)', () => {
     });
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent?.value).toBe(64);
-    // Real state: the param reads back the written value.
-    const params = live.listDeviceParams(trackId(0));
+    // Real state: the param reads back the written value (listDeviceParams is async).
+    const params = await live.listDeviceParams(trackId(0));
     expect(params[0]?.value).toBe(64);
     expect(live.transactionCount).toBe(1);
     assertNoForbiddenShapes(res);
@@ -135,8 +135,8 @@ describe('ring 2: write tools over MCP (response + state + one undo)', () => {
     // The returned param ids are addressable for a follow-up live_set_param.
     const params = res.structuredContent?.params as { id: string; name: string }[];
     expect(params[0]?.id).toBe('track:1/device:0/param:0');
-    // Real state: the device is on the track.
-    expect(live.listDeviceParams(trackId(1)).length).toBeGreaterThan(0);
+    // Real state: the device is on the track (listDeviceParams is async).
+    expect((await live.listDeviceParams(trackId(1))).length).toBeGreaterThan(0);
     expect(live.transactionCount).toBe(1);
     assertNoForbiddenShapes(res);
   });

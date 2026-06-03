@@ -86,7 +86,7 @@ export function activate(context: ActivationContext) {
 ## The pattern that keeps it testable
 
 Loophole splits every extension into a pure core (the music logic, no SDK) and a
-thin SDK shell (`activate()` plus one adapter). The core is tested exhaustively
-without Live; the shell is the only file that imports the SDK. The
+thin SDK shell (`activate()`, the command modules, and the adapter). The core is
+tested exhaustively without Live; the SDK is imported only inside that shell. The
 [API cheatsheet](/build-your-own/api-cheatsheet/) lists the handful of calls a
 context-menu extension actually uses.

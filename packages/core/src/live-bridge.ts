@@ -6,8 +6,9 @@
  * plain DTOs and stable string {@link PathId}s, never `Handle`/`bigint` and never
  * an SDK type. Two implementations exist:
  *  - {@link FakeLiveBridge} (this package, for tests and the out-of-Live playground), and
- *  - `AbletonLiveBridge` (the extension shell, the only file that imports
- *    `@ableton-extensions/sdk`).
+ *  - `AbletonLiveBridge` (the extension shell). In the extension package the SDK is
+ *    imported only by the adapter, the five command modules, and `activate()`, all
+ *    excluded from the committed CI tsconfig.
  *
  * It is the seam the 12 Loophole Bridge tools sit on: each read tool calls one read
  * method and shapes the result; each write tool calls one mutation method, which is
@@ -15,9 +16,12 @@
  * so a tool can report the resulting state without a follow-up read.
  *
  * Contract rules, taken verbatim from the SDK semantics:
- *  1. Reads are handle-backed getters and are SYNCHRONOUS (`getSongOverview`,
- *     `listTracks`, `findTrack`, `listClips`, `getNotes`, `listDeviceParams`,
- *     `listScenes`, `getTrackMixer`). They return a snapshot, never a Promise.
+ *  1. Most reads are handle-backed getters and are SYNCHRONOUS (`getSongOverview`,
+ *     `listTracks`, `findTrack`, `listClips`, `getNotes`, `listScenes`). They return a
+ *     snapshot, never a Promise. The two exceptions are `listDeviceParams` and
+ *     `getTrackMixer`: a parameter's live value comes from `DeviceParameter.getValue()`,
+ *     the one ASYNC getter in the SDK (01_SDK_MAP §2), so these reads return a Promise.
+ *     They are still pure reads: they open no transaction and add no undo step.
  *  2. Mutations are ASYNC and return Promises (`setTempo`, `setTrackProps`,
  *     `setNotes`, `setClipProps`, `createTrack`, `createMidiClip`,
  *     `createArrangementMidiClip`, `createArrangementAudioClip`, `clearClipsInRange`,
@@ -103,10 +107,15 @@ export interface LiveBridge {
    * stable {@link ParamId}, so the model can obtain a parameter id to pass to
    * {@link LiveBridge.setParam}. Backs the `ableton://track/{i}` resource.
    *
+   * ASYNC because each parameter's `value` is read with `DeviceParameter.getValue()`,
+   * the one async getter in the SDK (01_SDK_MAP §2), so the real adapter returns the
+   * live value rather than a placeholder. It is still a pure read: it opens NO
+   * transaction and adds NO undo step.
+   *
    * @throws BridgeError `STALE_REFERENCE` if `trackId` is unknown/deleted,
    *   `WRONG_TYPE` if it does not resolve to a track.
    */
-  listDeviceParams(trackId: TrackId): readonly DeviceParamInfo[];
+  listDeviceParams(trackId: TrackId): Promise<readonly DeviceParamInfo[]>;
 
   /**
    * Every scene in the Set, in scene order, each as a {@link SceneInfo} carrying its
@@ -119,16 +128,18 @@ export interface LiveBridge {
   /**
    * The mixer of a track, exposing its volume as an addressable
    * {@link DeviceParamInfo} (with `min` / `max` / `defaultValue` / `value`). Mirrors
-   * `Track.mixer.volume`, a `DeviceParameter`. SYNCHRONOUS: it returns the current
-   * parameter snapshot, not a Promise. The returned `volume.id` is a writable
-   * {@link ParamId}, so Gain Stage Doctor (W3) computes a trim and commits it through
-   * {@link LiveBridge.setParam} (the existing one-undo write path) without any new
-   * mutation method.
+   * `Track.mixer.volume`, a `DeviceParameter`. ASYNC because the volume's live `value`
+   * comes from `DeviceParameter.getValue()`, the one async getter in the SDK
+   * (01_SDK_MAP §2), so the real adapter returns the live value rather than a
+   * placeholder. It is still a pure read: it opens NO transaction and adds NO undo
+   * step. The returned `volume.id` is a writable {@link ParamId}, so Gain Stage Doctor
+   * (W3) computes a trim and commits it through {@link LiveBridge.setParam} (the
+   * existing one-undo write path) without any new mutation method.
    *
    * @throws BridgeError `STALE_REFERENCE` if `trackId` is unknown/deleted,
    *   `WRONG_TYPE` if it does not resolve to a track.
    */
-  getTrackMixer(trackId: TrackId): TrackMixerInfo;
+  getTrackMixer(trackId: TrackId): Promise<TrackMixerInfo>;
 
   // --- mutations: async, awaitable, each ONE queued transaction = ONE undo ---
 

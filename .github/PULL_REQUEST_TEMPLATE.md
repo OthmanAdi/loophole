@@ -12,7 +12,7 @@ Which rings cover this, and what you ran. If you changed in-Live behavior, say w
 - [ ] `pnpm typecheck` is green (`tsc --noEmit`, hard gate).
 - [ ] `pnpm lint` is green.
 - [ ] `pnpm format:check` passes (`pnpm format` to fix).
-- [ ] The `LiveBridge` rule holds: no file outside the adapter imports `@ableton-extensions/sdk`; no `Handle`, `bigint` ref, or `instanceof MidiClip` leaked out of the adapter.
+- [ ] The `LiveBridge` rule holds: `@ableton-extensions/sdk` is imported only by the adapter, the five command modules, and `activate()` (all excluded from the committed CI tsconfig); no `Handle`, `bigint` ref, or `instanceof MidiClip` leaked out of the adapter into `core` or `mcp`.
 - [ ] If a new SDK capability is used: the `LiveBridge` interface, `FakeLiveBridge`, and `AbletonLiveBridge` all updated, with a contract test so the fake cannot drift.
 - [ ] Docs updated if the tool surface or behavior changed.
 - [ ] A changeset is added if this changes published behavior (`pnpm changeset`).

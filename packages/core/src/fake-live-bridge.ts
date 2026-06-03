@@ -4,7 +4,9 @@
  * run on CI with no Live install.
  *
  * Faithful to API_REFERENCE.md:
- *  - getters are synchronous and return cloned snapshots,
+ *  - most getters are synchronous and return cloned snapshots; `listDeviceParams` and
+ *    `getTrackMixer` are async reads (the real value comes from the one async getter,
+ *    `DeviceParameter.getValue()`) yet still bypass the transaction counter / undo,
  *  - mutators are async (return resolved Promises),
  *  - MIDI notes use read-map-assign: a read clones, a write replaces wholesale,
  *  - pitch and velocity are clamped to 0..127 on write (Live rejects out-of-range),
@@ -1047,7 +1049,15 @@ export class FakeLiveBridge implements LiveBridge {
     return clip.notes.map(noteToDTO);
   }
 
-  listDeviceParams(id: TrackId): readonly DeviceParamInfo[] {
+  // listDeviceParams / getTrackMixer are ASYNC: in the real SDK a parameter's value is
+  // read with DeviceParameter.getValue() (the one async getter, 01_SDK_MAP §2). The fake
+  // holds the value in memory and could return it synchronously, but it returns a
+  // resolved Promise to MATCH the port + the real adapter: an `async` method also turns a
+  // #resolveTrack throw into a rejection, exactly as the adapter does. These are pure
+  // reads: they do NOT go through #mutate, so they touch neither the transaction counter
+  // nor the undo steps.
+
+  async listDeviceParams(id: TrackId): Promise<readonly DeviceParamInfo[]> {
     const { index, track } = this.#resolveTrack(id);
     const out: DeviceParamInfo[] = [];
     track.devices.forEach((device, deviceIndex) => {
@@ -1062,7 +1072,7 @@ export class FakeLiveBridge implements LiveBridge {
     return this.#song.scenes.map((scene, index) => this.#sceneInfo(index, scene));
   }
 
-  getTrackMixer(id: TrackId): TrackMixerInfo {
+  async getTrackMixer(id: TrackId): Promise<TrackMixerInfo> {
     const { index, track } = this.#resolveTrack(id);
     // Expose the volume as an addressable parameter: its id is track:N/mixer/volume,
     // which #resolveParam routes, so a handler can write it through setParam (one undo).

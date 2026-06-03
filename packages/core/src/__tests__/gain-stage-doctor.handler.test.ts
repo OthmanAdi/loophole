@@ -61,7 +61,8 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     const { decode } = fakeDecode(fixture);
 
     // Compute the expected stored value with the SAME pure functions the handler uses.
-    const vol = bridge.getTrackMixer(id).volume;
+    // getTrackMixer is async (the live volume value comes from DeviceParameter.getValue()).
+    const vol = (await bridge.getTrackMixer(id)).volume;
     const { rmsDb } = analyzeLoudness(fixture);
     const expectedTrim = suggestTrimDb(rmsDb, TARGET_DB);
     const expectedValue = dbToParamValue(expectedTrim, vol);
@@ -79,7 +80,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     expect(result.rows[0]?.trimDb).toBeCloseTo(expectedTrim, 10);
 
     // The stored mixer volume is exactly the mapped value (a fresh read sees the write).
-    expect(bridge.getTrackMixer(id).volume.value).toBeCloseTo(expectedValue, 10);
+    expect((await bridge.getTrackMixer(id)).volume.value).toBeCloseTo(expectedValue, 10);
   });
 
   it('writes the whole trim batch as exactly ONE transaction (one undo)', async () => {
@@ -117,9 +118,9 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     // Both tracks landed the mapped value (each computed with the same pure functions).
     const { rmsDb } = analyzeLoudness(fixture);
     for (const id of ids) {
-      const vol = bridge.getTrackMixer(id).volume;
+      const vol = (await bridge.getTrackMixer(id)).volume;
       const expected = dbToParamValue(suggestTrimDb(rmsDb, TARGET_DB), vol);
-      expect(bridge.getTrackMixer(id).volume.value).toBeCloseTo(expected, 10);
+      expect((await bridge.getTrackMixer(id)).volume.value).toBeCloseTo(expected, 10);
     }
   });
 
@@ -142,7 +143,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
 
     await runGainStageDoctor(bridge, { trackIds: [id], targetDb: TARGET_DB }, decode);
 
-    const stored = bridge.getTrackMixer(id).volume.value;
+    const stored = (await bridge.getTrackMixer(id)).volume.value;
     expect(stored).toBeLessThan(0.85); // below unity (a cut)
     expect(stored).toBeGreaterThanOrEqual(0); // still on the rails
   });
@@ -160,7 +161,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
 
     // rmsDb floored well below target → a big positive trim → fader clamps up to max.
     expect(result.rows[0]?.rmsDb).toBeLessThan(TARGET_DB);
-    expect(bridge.getTrackMixer(id).volume.value).toBe(1);
+    expect((await bridge.getTrackMixer(id)).volume.value).toBe(1);
   });
 
   it('opens no transaction when there are no tracks to stage', async () => {

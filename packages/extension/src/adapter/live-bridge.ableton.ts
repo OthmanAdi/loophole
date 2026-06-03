@@ -1,10 +1,11 @@
 /**
  * `AbletonLiveBridge`: the real, in-Live implementation of the core {@link LiveBridge}
- * port, and the ONLY file in the product that imports `@ableton-extensions/sdk`
- * (00_MASTER_PLAN §5, 02_BRIDGE_SPEC §9, the locked import boundary). Everything that
- * touches a `Handle`, an `instanceof`, the {@link WriteQueue}, and `withinTransaction`
- * lives behind this seam, so the MCP tools and the five command handlers stay pure
- * DTO-in / DTO-out and never see an SDK type.
+ * port (00_MASTER_PLAN §5, 02_BRIDGE_SPEC §9, the locked import boundary). The SDK is
+ * imported only by the adapter, the five command modules, and `activate()`, all excluded
+ * from the committed CI tsconfig. Everything that touches a `Handle`, an `instanceof`,
+ * the {@link WriteQueue}, and `withinTransaction` lives behind this seam, so the MCP
+ * tools and the five command handlers stay pure DTO-in / DTO-out and never see an SDK
+ * type.
  *
  * It is constructed once in `activate()` from the {@link ExtensionContext} returned by
  * `initialize(activation, "1.0.0")` and lives for the whole Live session
@@ -19,9 +20,12 @@
  * Contract mapping (verbatim from 01_SDK_MAP §0 and 02_BRIDGE_SPEC §4), kept aligned to
  * {@link import("@othmanadi/loophole-core").FakeLiveBridge} so the two pass the same
  * contract tests:
- *  - READS are synchronous handle-backed getters: resolve a fresh object via the
- *    {@link Resolver}, shape it through {@link import("./mappers.js")}, bypass the queue.
- *    A read returns a value, never a Promise.
+ *  - READS resolve a fresh object via the {@link Resolver}, shape it through
+ *    {@link import("./mappers.js")}, and bypass the queue (no transaction, no undo step).
+ *    Most are synchronous handle-backed getters. The two exceptions, `getTrackMixer` and
+ *    `listDeviceParams`, are async: a parameter's live `value` comes from
+ *    `DeviceParameter.getValue()`, the one async getter (01_SDK_MAP §2), so they `await`
+ *    it for the REAL value and return a Promise. They are still pure reads.
  *  - PROPERTY SETTERS are synchronous: `track.name = x`, `clip.color = c`,
  *    `cuePoint.name = n` commit immediately and are NEVER awaited (01_SDK_MAP §0 Rule
  *    A). Only `create*` / `delete*` / `insertDevice` / `DeviceParameter.setValue` /
@@ -34,16 +38,6 @@
  *  - Type narrowing uses `instanceof` (in the {@link Resolver} and mappers), throwing
  *    the core {@link import("@othmanadi/loophole-core").BridgeError}s `WRONG_TYPE` /
  *    `STALE_REFERENCE` / `BAD_INPUT` / `SDK_REJECTED`.
- *
- * KNOWN PORT↔SDK DIVERGENCE (flagged for the port owner, not silently papered over):
- * the port types `getTrackMixer` and `listDeviceParams` as SYNCHRONOUS and carries a
- * `value` field, but `DeviceParameter.getValue()` is the one ASYNC getter
- * (01_SDK_MAP §2). The fake can return a real stored value synchronously; the real SDK
- * cannot. These two sync reads therefore report the parameter's structural facts
- * (`min` / `max` / `defaultValue` / `isQuantized`) accurately and seed `value` with
- * `defaultValue` as a placeholder. A handler that needs the LIVE value (Gain Stage
- * Doctor reading `volume.value`) must read it through an async path; until the port is
- * revised to make these reads async, this is the honest limit. See the return note.
  *
  * RING-3 PENDING (no Ableton here; nothing below is Live-proven): the one-undo behavior
  * of each mutation, the two-step create-then-rename of a cue point (TWO undo steps, an
@@ -70,7 +64,6 @@ import {
   type DeviceInfo,
   type DeviceParamInfo,
   type LiveBridge,
-  mixerVolumeParamId,
   type NoteDTO,
   type ParamId,
   paramId,
@@ -101,6 +94,7 @@ import {
   sceneInfo,
   trackInfo,
   trackKind,
+  trackMixerInfo,
 } from './mappers.js';
 import { Resolver, type V } from './resolver.js';
 import { WriteQueue } from './write-queue.js';
@@ -225,11 +219,11 @@ export class AbletonLiveBridge implements LiveBridge {
   }
 
   listTracks(): readonly TrackInfo[] {
-    // A full TrackInfo's mixer scalars (volume / panning) are async parameter values,
-    // but the port types listTracks() as synchronous. Report the structural facts and a
-    // sync-safe mixer (sendCount from the sync `sends` getter; volume / panning seeded
-    // 0). The exact, addressable volume is obtained via getTrackMixer. See the
-    // PORT↔SDK DIVERGENCE note at the top of this file.
+    // A full TrackInfo's mixer scalars (volume / panning) are async parameter values
+    // (DeviceParameter.getValue()), but the port types listTracks() as synchronous.
+    // Report the structural facts and a sync-safe mixer (sendCount from the sync `sends`
+    // getter; volume / panning seeded 0). The exact, addressable volume value is obtained
+    // via getTrackMixer, which is async precisely so it can await that real value.
     return this.#resolver.song.tracks.map((track, index) =>
       trackInfo(track, index, { volume: 0, panning: 0, sendCount: track.mixer.sends.length }),
     );
@@ -273,53 +267,32 @@ export class AbletonLiveBridge implements LiveBridge {
     return midi.notes.map(noteToDTO);
   }
 
-  listDeviceParams(id: TrackId): readonly DeviceParamInfo[] {
-    // PORT↔SDK DIVERGENCE (see top): a parameter's current value is async (getValue()),
-    // but this read is typed sync. Report structural facts accurately and seed `value`
-    // with `defaultValue`. A handler needing the live value reads it via setParam's
-    // result (which awaits the true value).
+  async listDeviceParams(id: TrackId): Promise<readonly DeviceParamInfo[]> {
+    // ASYNC read (no undo step): a parameter's current value comes from
+    // DeviceParameter.getValue(), the one async getter (01_SDK_MAP §2). paramInfo awaits
+    // that real value; the reads run in parallel with Promise.all, order preserved so the
+    // param ids line up with their index.
     const { track, index } = this.#resolver.resolveTrack(id);
-    const out: DeviceParamInfo[] = [];
-    track.devices.forEach((device, deviceIndex) => {
-      device.parameters.forEach((param, paramIndex) => {
-        out.push({
-          id: paramId(index, deviceIndex, paramIndex),
-          name: param.name,
-          min: param.min,
-          max: param.max,
-          isQuantized: param.isQuantized,
-          defaultValue: param.defaultValue,
-          value: param.defaultValue,
-        });
-      });
-    });
-    return out;
+    const params = track.devices.flatMap((device, deviceIndex) =>
+      device.parameters.map((param, paramIndex) =>
+        paramInfo(param, paramId(index, deviceIndex, paramIndex)),
+      ),
+    );
+    return Promise.all(params);
   }
 
   listScenes(): readonly SceneInfo[] {
     return this.#resolver.song.scenes.map((scene, index) => sceneInfo(scene, index));
   }
 
-  getTrackMixer(id: TrackId): TrackMixerInfo {
-    // PORT↔SDK DIVERGENCE (see top): the volume's live value is async (getValue()), but
-    // this read is typed sync. Return the addressable volume parameter with its sync
-    // structural facts; `value` is seeded with `defaultValue`. Gain Stage Doctor reads
-    // `min` / `max` / `defaultValue` to fit the dB mapping and commits the trim via
-    // setParam (which reads + writes the true value), so the trim math does not depend
-    // on this placeholder `value`.
+  async getTrackMixer(id: TrackId): Promise<TrackMixerInfo> {
+    // ASYNC read (no undo step): the volume's live value comes from
+    // DeviceParameter.getValue(), the one async getter (01_SDK_MAP §2). trackMixerInfo
+    // awaits the real value and exposes the volume as an addressable parameter whose id is
+    // track:N/mixer/volume, so Gain Stage Doctor reads the true level to fit the dB
+    // mapping and commits the trim via setParam (one undo).
     const { track, index } = this.#resolver.resolveTrack(id);
-    const volume = track.mixer.volume;
-    return {
-      volume: {
-        id: mixerVolumeParamId(index),
-        name: volume.name,
-        min: volume.min,
-        max: volume.max,
-        isQuantized: volume.isQuantized,
-        defaultValue: volume.defaultValue,
-        value: volume.defaultValue,
-      },
-    };
+    return trackMixerInfo(track.mixer, index);
   }
 
   // --- mutations (async; one queued transaction = one undo) ---

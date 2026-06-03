@@ -80,8 +80,8 @@ const DEFAULT_RENDER_BEATS = 4;
  *  2. `await decode(path)` to PCM channels (the injected boundary),
  *  3. {@link analyzeLoudness} → peak / RMS / crest,
  *  4. {@link suggestTrimDb}(rmsDb, targetDb) → the dB trim,
- *  5. read `bridge.getTrackMixer(trackId).volume` and {@link dbToParamValue} the trim
- *     onto its internal scale → the new volume value.
+ *  5. `await bridge.getTrackMixer(trackId)` for its `volume` (an async read; no undo
+ *     step) and {@link dbToParamValue} the trim onto its internal scale → the new value.
  *
  * Then it commits EVERY trim in a single transaction:
  *   `bridge.transaction(() => Promise.all(targets.map(t => bridge.setParam(t.volumeParamId, t.newValue))))`.
@@ -117,8 +117,9 @@ export async function runGainStageDoctor(
     rows.push({ track: render.track, peakDb, rmsDb, crest, trimDb });
 
     // Map the dB trim onto the mixer volume's internal scale, anchored at its unity
-    // (defaultValue) and clamped to its range. getTrackMixer is a SYNC read.
-    const volume: DeviceParamInfo = bridge.getTrackMixer(trackId).volume;
+    // (defaultValue) and clamped to its range. getTrackMixer is an async read (the live
+    // volume value comes from DeviceParameter.getValue()); it adds no undo step.
+    const volume: DeviceParamInfo = (await bridge.getTrackMixer(trackId)).volume;
     const newValue = dbToParamValue(trimDb, volume);
     targets.push({ volumeParamId: volume.id, newValue });
   }

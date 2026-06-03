@@ -71,14 +71,16 @@ export function registerResources(server: McpServer, bridge: LiveBridge): void {
         'the track order index, e.g. ableton://track/2.',
       mimeType: 'application/json',
     },
-    (uri, variables): ReadResourceResult => {
+    async (uri, variables): Promise<ReadResourceResult> => {
       const raw = Array.isArray(variables.i) ? variables.i[0] : variables.i;
       const index = Number(raw);
       const id = trackId(index);
+      // listDeviceParams is async (a parameter's live value comes from the one async
+      // SDK getter); listClips stays sync. await the params before shaping the JSON.
       const data = {
         trackId: id,
         clips: bridge.listClips(id),
-        params: bridge.listDeviceParams(id),
+        params: await bridge.listDeviceParams(id),
       };
       return jsonResource(uri, data);
     },

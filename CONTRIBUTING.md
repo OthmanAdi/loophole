@@ -8,13 +8,13 @@ Loophole is pre-release and built in the open against the Ableton Extensions SDK
 
 The whole project hangs on one seam. `LiveBridge` is a plain TypeScript interface (DTOs in, DTOs out, opaque string ids, no Ableton types). Two things implement it:
 
-- `AbletonLiveBridge` (in `packages/extension`) wraps the real SDK. It is **the only file in the repo that imports `@ableton-extensions/sdk`.** It contains almost no logic, just translation.
+- `AbletonLiveBridge` (in `packages/extension`) wraps the real SDK. The SDK is imported only by the adapter, the five command modules, and `activate()`, all excluded from the committed CI tsconfig. The adapter contains almost no logic, just translation.
 - `FakeLiveBridge` (a shipped export of `@othmanadi/ableton-mcp`, used for testing the server without Ableton) is an in-memory model of a Live Set that reproduces the SDK contract: sync getters, async mutators, read-map-assign for notes, pitch clamped to 0..127, a deleted handle throws, and `withinTransaction` takes a synchronous callback.
 
 Two corollaries, both enforced in review:
 
-1. No file outside the adapter may import `@ableton-extensions/sdk`. No `Handle`, no `bigint` object reference, no `instanceof MidiClip` outside the adapter.
-2. Logic lives in tested modules. The SDK adapter only translates, which is why it is excluded from coverage (it is the one file that genuinely cannot run in CI). If you find yourself writing a branch inside the adapter, the logic probably belongs in a tested module.
+1. Only the SDK-facing shell may import `@ableton-extensions/sdk`: the adapter, the five command modules, and `activate()`. No `Handle`, `bigint` object reference, or `instanceof MidiClip` leaks past the adapter into `core` or `mcp`.
+2. Logic lives in tested modules. The SDK-facing shell only translates and wires, which is why those files are excluded from the committed CI tsconfig and from coverage (they genuinely cannot run in CI without Live). If you find yourself writing a branch inside the adapter, the logic probably belongs in a tested module.
 
 The dependency direction is: `transport` imports `tools` imports `domain` (the `LiveBridge` interface). The domain depends on nothing. If a change breaks that direction, the layering is gone and the change needs rework.
 

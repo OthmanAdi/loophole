@@ -32,10 +32,10 @@ const AUDIO_ARGS: CreateAudioClipArgs = {
 };
 
 describe('getTrackMixer: exposes a writable volume ParamId that round-trips via setParam', () => {
-  it('returns the volume parameter with min/max/defaultValue/value and a mixer id', () => {
+  it('resolves to the volume parameter with min/max/defaultValue/value and a mixer id', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const mixer = bridge.getTrackMixer(trackId(0));
-    expect(mixer).not.toBeInstanceOf(Promise);
+    // getTrackMixer is async (the real value comes from DeviceParameter.getValue()).
+    const mixer = await bridge.getTrackMixer(trackId(0));
     expect(mixer.volume.id).toBe(mixerVolumeParamId(0));
     expect(mixer.volume.min).toBe(0);
     expect(mixer.volume.max).toBe(1);
@@ -46,14 +46,14 @@ describe('getTrackMixer: exposes a writable volume ParamId that round-trips via 
 
   it('the reported volume id is writable through setParam and the read reflects it', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const volumeId = bridge.getTrackMixer(trackId(0)).volume.id;
+    const volumeId = (await bridge.getTrackMixer(trackId(0))).volume.id;
 
     const updated = await bridge.setParam(volumeId, 0.5);
     expect(updated.id).toBe(volumeId);
     expect(updated.value).toBe(0.5);
     // A fresh getTrackMixer read sees the persisted write (proves it mutates the
     // stored param by reference, not a throwaway snapshot).
-    expect(bridge.getTrackMixer(trackId(0)).volume.value).toBe(0.5);
+    expect((await bridge.getTrackMixer(trackId(0))).volume.value).toBe(0.5);
   });
 
   it('a mixer-volume setParam commits exactly one undo step', async () => {
@@ -65,41 +65,38 @@ describe('getTrackMixer: exposes a writable volume ParamId that round-trips via 
 
   it('setParam on the volume id clamps to the parameter range (BAD_INPUT out of range)', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const volumeId = bridge.getTrackMixer(trackId(0)).volume.id;
+    const volumeId = (await bridge.getTrackMixer(trackId(0))).volume.id;
     await expect(bridge.setParam(volumeId, 2)).rejects.toSatisfy((e: unknown) =>
       isBridgeErrorOfCode(e, 'BAD_INPUT'),
     );
-    // The failed write left the value untouched and committed no undo step.
-    expect(bridge.getTrackMixer(trackId(0)).volume.value).toBe(0.6);
+    // The failed write left the value untouched and committed no undo step. A pure read
+    // (getTrackMixer) does NOT add an undo step, so the count stays at zero.
+    expect((await bridge.getTrackMixer(trackId(0))).volume.value).toBe(0.6);
     expect(bridge.transactionCount).toBe(0);
   });
 
-  it('getTrackMixer works on any track (the mixer exists on MIDI tracks too)', () => {
+  it('getTrackMixer works on any track (the mixer exists on MIDI tracks too)', async () => {
     const bridge = FakeLiveBridge.seeded();
     // Drums (track 0) is a MIDI track; it still has a mixer volume.
-    const mixer = bridge.getTrackMixer(trackId(0));
+    const mixer = await bridge.getTrackMixer(trackId(0));
     expect(mixer.volume.id).toBe(mixerVolumeParamId(0));
     expect(mixer.volume.value).toBe(0.85);
   });
 
-  it('getTrackMixer on an unknown track throws STALE_REFERENCE', () => {
+  it('getTrackMixer on an unknown track rejects with STALE_REFERENCE', async () => {
     const bridge = FakeLiveBridge.seeded();
-    expect(
-      isBridgeErrorOfCode(
-        captured(() => bridge.getTrackMixer(trackId(99))),
-        'STALE_REFERENCE',
-      ),
-    ).toBe(true);
+    // Async read: a bad id surfaces as a rejected Promise (matching the real adapter,
+    // whose resolveTrack throw inside an async method becomes a rejection).
+    await expect(bridge.getTrackMixer(trackId(99))).rejects.toSatisfy((e: unknown) =>
+      isBridgeErrorOfCode(e, 'STALE_REFERENCE'),
+    );
   });
 
-  it('getTrackMixer on a non-track id throws WRONG_TYPE', () => {
+  it('getTrackMixer on a non-track id rejects with WRONG_TYPE', async () => {
     const bridge = FakeLiveBridge.seeded();
-    expect(
-      isBridgeErrorOfCode(
-        captured(() => bridge.getTrackMixer(clipSlotId(0, 0))),
-        'WRONG_TYPE',
-      ),
-    ).toBe(true);
+    await expect(bridge.getTrackMixer(clipSlotId(0, 0))).rejects.toSatisfy((e: unknown) =>
+      isBridgeErrorOfCode(e, 'WRONG_TYPE'),
+    );
   });
 });
 
@@ -535,11 +532,11 @@ describe('Wave B factory fixtures', () => {
     expect(emptySlot?.endMarker).toBe(0);
   });
 
-  it('seededAudioTrack isolates a single audio track with a known mixer volume', () => {
+  it('seededAudioTrack isolates a single audio track with a known mixer volume', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
     expect(bridge.listTracks().length).toBe(1);
     expect(bridge.listTracks()[0]?.kind).toBe('audio');
-    expect(bridge.getTrackMixer(trackId(0)).volume.value).toBe(0.6);
+    expect((await bridge.getTrackMixer(trackId(0))).volume.value).toBe(0.6);
     expect(bridge.firstMixerVolumeId).toBe(mixerVolumeParamId(0));
   });
 });
