@@ -35,6 +35,15 @@ packages/extension/vendor/*.tgz
 # Packaged extension build artifacts (shipped via GitHub Releases, not the tree)
 *.ablx
 
+# Agent session artifacts: handoffs, planning, scratch, local agent config (never commit)
+.agents/
+.claude/settings.local.json
+task_plan.md
+findings.md
+progress.md
+*HANDOFF*.md
+*.handoff.md
+
 # Editor / OS
 .idea/
 .vscode/*
