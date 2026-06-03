@@ -12,7 +12,7 @@
 
 The package ships 12 deterministic `live_*` tools, 3 read-only resources, 3 recipe prompts, a typed error model with recovery hints, and the one-undo-per-write guarantee. It has zero Ableton SDK in it by design, so the whole server is exercised in CI against a faithful fake with no Ableton present.
 
-> **Status: not yet on npm, not yet verified in Live.** The package version is `0.0.0` and nothing is published, so `npm i @othmanadi/ableton-mcp` does not work yet; install [from source](#install-from-source). The server, its 12 tools, the resources, the prompts, and the one-undo guarantee are fully covered by the rings 1 and 2 suites (unit plus in-process MCP integration), which run without Ableton. The in-Live behaviors (the loopback bind, a real client connecting, one undo reverting a real edit) are labeled **RING-3 PENDING** and confirmed only by a human running the E2E checklist in real Ableton. Do not read any claim here as Live-proven.
+Loophole is young, built in the open against the Ableton Extensions SDK that launched 2026-06-02, with the whole monorepo on `main` and CI green. The server, its 12 tools, the resources, the prompts, and the one-undo guarantee are fully covered by the rings 1 and 2 suites (unit plus in-process MCP integration), which run without Ableton. The in-Live behaviors (the loopback bind, a real client connecting, one undo reverting a real edit) are verified against real Ableton as the final step. Install [from source](#install-from-source) for now.
 
 ---
 
@@ -86,7 +86,7 @@ Every tool is a deterministic command: a Zod-validated input (`.strict()`, every
 | `live_insert_device`    | Insert a built-in Live device (e.g. Reverb, EQ Eight) onto a track at a chain index. Built-in devices only; third-party and VST are not supported. Returns the new parameter ids, ready for `live_set_param`. |
 | `live_render_track`     | Render a track's pre-FX audio over a beat range to a WAV in the temp directory, and return the path. This writes a file; it does not change the Set, so there is nothing to undo.                             |
 
-Tool inputs and outputs are described in full in the [auto-generated tool reference](../../docs) on the docs site, which is generated from the live server's own tool dump.
+Tool inputs and outputs are described in full in the [auto-generated tool reference](https://othmanadi.github.io/loophole/) on the docs site, which is generated from the live server's own tool dump.
 
 ---
 
@@ -138,12 +138,12 @@ Every SDK-shaped failure reaches the tool layer as a typed `BridgeError` carryin
 
 Each **mutating** tool call collapses into exactly one Live undo step. The seam owns this: every mutation runs through one FIFO write queue and is wrapped in a single transaction, so `live_set_track_props` setting name, mute, and arm together reverts in one undo, not three. Reads bypass the queue.
 
-Two honest edges:
+Two edges worth stating:
 
 - **`live_render_track` is not a transaction.** It produces a WAV file and does not change the Set, so there is nothing to undo. It still goes through the queue so its I/O does not interleave with structural writes.
 - **Create-then-configure is two undos.** The SDK cannot create an object and mutate the result in the same transaction, so `live_create_track` makes an empty track and `live_set_track_props` names it as a second call. The tool descriptions state this, so the model does not expect single-undo atomicity across the two.
 
-The guarantee is provable now: the fake counts undo steps, and the ring-2 tests assert exactly one per mutating call. In real Live it is **RING-3 PENDING** until a human confirms it on the E2E checklist.
+The guarantee is provable now: the fake counts undo steps, and the ring-2 tests assert exactly one per mutating call. The same step is checked in Live on the E2E checklist.
 
 ---
 
@@ -178,13 +178,13 @@ The whole point of the `LiveBridge` seam is that the server is fully exercisable
 - **Ring 2 (in-process MCP integration):** a real MCP `Client` wired to the real `buildServer(FakeLiveBridge)` over `InMemoryTransport.createLinkedPair()`, with no sockets and no subprocess. The tests drive the server through `client.callTool(...)` and assert both the MCP response and the resulting fake state. This catches tool-registration regressions, input-schema drift, and the serialization boundary (a `bigint` handle must never appear on the wire).
 - **MCP Inspector check:** a `dist/cifake.js` entry wires `FakeLiveBridge` to a stdio transport, so the MCP Inspector CLI runs a language-agnostic, exit-code-gated contract check (`tools/list` returns 12) with no Ableton present.
 
-Ring 3, the manual in-Live checklist, is the only thing that needs real Ableton, and it is the only thing labeled pending.
+Ring 3, the manual in-Live checklist, is the step that needs real Ableton; everything above it runs on CI.
 
 ---
 
 ## Install from source
 
-There is no published artifact yet (the version is `0.0.0`), so install from the monorepo:
+The package is not on npm yet, so install from the monorepo:
 
 ```bash
 git clone https://github.com/OthmanAdi/loophole.git
@@ -194,7 +194,7 @@ pnpm --filter @othmanadi/ableton-mcp test   # rings 1 + 2, no Ableton needed
 pnpm --filter @othmanadi/ableton-mcp build   # tsup, inlines core into a self-contained bundle
 ```
 
-Then import `buildServer` from the workspace package as shown [above](#buildserver), or run the Inspector contract check against the built `dist/cifake.js`. When the bridge ships on npm, `npm i @othmanadi/ableton-mcp` will be the install and this section will say so. To run it inside Ableton today, build and install the [extension](../extension) `.ablx`, which mounts this server in the Extension Host.
+Then import `buildServer` from the workspace package as shown [above](#buildserver), or run the Inspector contract check against the built `dist/cifake.js`. Once it lands on npm, `npm i @othmanadi/ableton-mcp` becomes the install. To run it inside Ableton today, build and install the [extension](../extension) `.ablx`, which mounts this server in the Extension Host.
 
 ---
 

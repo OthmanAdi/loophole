@@ -57,7 +57,7 @@ function buildToolBlock() {
  * every page (§1.5 step 3, §1.6).
  */
 export default defineConfig({
-  // GitHub Pages project site. When a custom domain (docs.loophole.dev) is set up
+  // GitHub Pages project site. When a custom domain is set up
   // later, change `site` to it and drop `base` (and add a CNAME).
   site: 'https://othmanadi.github.io',
   base: '/loophole',

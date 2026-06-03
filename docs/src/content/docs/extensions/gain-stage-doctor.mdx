@@ -29,7 +29,7 @@ trims.
   Suite.
 </Aside>
 
-## Honest beta limit
+## Beta limit
 
 Gain Stage Doctor measures the pre-FX audio of audio tracks. "Pre-FX" means it
 gauges the source level going into the track before the track's own effects, not
@@ -37,4 +37,5 @@ the post-chain or bus level. It works on audio tracks only: MIDI and instrument
 tracks have no pre-FX render in this beta, so freeze or flatten them to audio
 first if you want to stage them. The mixer volume control uses Live's internal
 value scale, so the tool maps your target in dB to that scale and shows you the
-dB it is aiming for. Assumes the time range you select; user-invoked only.
+dB it is aiming for. It measures the time range you select, and it is user-invoked,
+never auto-triggered.

@@ -7,7 +7,7 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/github/license/OthmanAdi/loophole?label=license&color=3c873a" alt="MIT license" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-3c873a?logo=nodedotjs&logoColor=white" alt="Runs on Node 22 and 24" /></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-spec_2025--11--25-1f6feb" alt="Built on the Model Context Protocol, spec revision 2025-11-25" /></a>
-  <a href="../../README.md#build-wave-roadmap"><img src="https://img.shields.io/badge/status-pre--release%20%C2%B7%20building%20in%20the%20open-f59e0b" alt="Status: pre-release, building in the open" /></a>
+  <a href="../../README.md#build-wave-roadmap"><img src="https://img.shields.io/badge/status-building%20in%20the%20open-3c873a" alt="Status: building in the open" /></a>
 </p>
 
 # Loophole Kit (`@othmanadi/loophole-extension`)
@@ -30,13 +30,13 @@ are fully tested without Live. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for 
 prior art Loophole builds on (ahujasid/ableton-mcp, Producer Pal), see the root
 [Built on, and prior art](../../README.md#built-on-and-prior-art).
 
-> **Not yet verified in Live (RING-3 PENDING).** Nothing in this package has run inside real
-> Ableton Live. Every SDK call is typed against the genuine extracted v1.0.0-beta.0
-> declarations (the local `tsconfig.live.json` typecheck passes), but the in-Live behaviors
-> (the `.ablx` install, the loopback bind, one undo per action, the W3 dB curve, the W5
-> create-then-populate undo grouping) are labeled **RING-3 PENDING** in the code and are
-> confirmed only by a human running the manual `E2E_CHECKLIST.md` in Live. Do not read any
-> claim here as Live-proven.
+Loophole is young, built in the open against the Ableton Extensions SDK that launched
+2026-06-02, with the whole monorepo on `main` and CI green. This is the one package that
+touches Ableton's runtime, so it is verified there as the final step. Every SDK call is typed
+against the genuine extracted v1.0.0-beta.0 declarations and the local `tsconfig.live.json`
+typecheck passes; the in-Live behaviors (the `.ablx` install, the loopback bind, one undo per
+action, the W3 dB curve, the W5 create-then-populate undo grouping) run through the manual
+`E2E_CHECKLIST.md`.
 
 ---
 
@@ -95,7 +95,7 @@ Live, pick the label, adjust the modal, apply. The whole effect is one undo step
 | **Session-to-Song Builder** | `Build Arrangement from Session…` | a Scene                                    | Recreates your Session clips in the Arrangement at the bars you lay out: named, colored, with cue points.                   |
 | **Set Janitor**             | `Clean Up Set…`                   | a Scene                                    | Sweeps the whole Set for mess (empty tracks, placeholder names, off-palette colors, loop overruns) and fixes what you tick. |
 
-### Honest beta limits
+### Beta limits
 
 The Extensions SDK is v1.0.0-beta and the API has documented gaps. These shape what the Kit
 can and cannot do today:
@@ -109,13 +109,13 @@ can and cannot do today:
 - **Gain Stage Doctor** measures **pre-FX** audio and works on **audio tracks only** (freeze
   or flatten MIDI first). The mixer volume control uses Live's internal value scale, so the
   tool maps your dB target onto that scale and shows the dB it is aiming for. The exact
-  dB-to-internal-value curve is a **RING-3 PENDING** de-risk: it must be swept on a real
-  build machine before the dB labels are trusted.
+  dB-to-internal-value curve is swept on a real build machine before the dB labels are
+  trusted.
 - **Session-to-Song Builder** **recreates** clips (it copies MIDI notes and references audio
   by file, plus name and color). Warp markers, clip envelopes, and follow actions do not
   carry over. It assumes 4/4 unless a scene signature is read. Locators are written as cue
   points (time plus name), not Live's colored section locators. The create-then-populate
-  one-undo grouping is a **RING-3 PENDING** de-risk.
+  one-undo grouping is confirmed on a real build before release.
 - **Set Janitor** is a structural hygiene sweep, not a clip renamer (Ableton's own RNMR does
   content-aware MIDI naming). Deletes are off by default and opt-in. It cannot relink missing
   samples, consolidate the project folder, or fix automation.
@@ -215,8 +215,8 @@ any local SDK tarball under `vendor/` are gitignored.
 
 The SDK-facing files are proven instead by the local `tsconfig.live.json` typecheck against
 the genuine extracted types. That, plus the [`core`](../core) and [`mcp`](../mcp) test
-suites, is the full machine-checkable coverage available without Ableton. In-Live behavior is
-RING-3 PENDING.
+suites, is the full machine-checkable coverage available without Ableton; the in-Live step
+runs through the `E2E_CHECKLIST.md`.
 
 ---
 

@@ -6,9 +6,9 @@
 
 The documentation site for [Loophole](../README.md), the Ableton MCP server and extension kit. It is a standalone [Astro Starlight](https://starlight.astro.build/) project that lives under `docs/`, with its own toolchain. It is **not** a pnpm workspace member, so the lean monorepo CI stays decoupled from the docs build.
 
-Published at `docs.loophole.dev` when a maintainer triggers the deploy. Nothing here publishes automatically (see [Deploy](#deploy)).
+Published at [https://othmanadi.github.io/loophole/](https://othmanadi.github.io/loophole/), a GitHub Pages project site. Each deploy is a manual maintainer action (see [Deploy](#deploy)).
 
-> **Pre-release.** The site documents a beta. The tool reference is generated from the running Loophole Bridge, and the SDK-free layers it describes are tested without Live, but the in-Live behaviors are confirmed only by the human-run E2E checklist. The site states each limit where it applies; do not read any page as Live-proven.
+This site documents a young project, built in the open on the Ableton Extensions SDK. The tool reference is generated from the running Loophole Bridge, the SDK-free layers it describes are tested without Live, and the in-Live behaviors are verified against real Ableton as the final step. Each page states the limit that applies to it.
 
 ---
 

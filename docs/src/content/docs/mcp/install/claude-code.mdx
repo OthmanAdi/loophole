@@ -5,11 +5,11 @@ description: Wire Claude Code to the Loophole Bridge over local HTTP, then verif
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Install from source">
-  There is no published `.ablx` yet, so first build and install the extension from source
-  ([Quickstart](/mcp/quickstart/)). The bridge runs inside Live; this page only wires Claude Code to
-  it. With Live running, the extension has written a `bridge.json` (a port and a bearer token) into
-  its storage directory.
+<Aside type="note" title="Build the extension first">
+  Build and install the extension from source first ([Quickstart](/mcp/quickstart/)); there is no
+  published `.ablx` yet. The bridge runs inside Live; this page only wires Claude Code to it. With
+  Live running, the extension has written a `bridge.json` (a port and a bearer token) into its
+  storage directory.
 </Aside>
 
 ## Connect
@@ -27,6 +27,12 @@ Confirm the exact header flag against your installed Claude Code version; the
 header carries `Authorization: Bearer <token>`.
 
 ## The skill writes this for you
+
+Install the `ableton-live` skill (a thin `/doctor` + `/setup` + recipes layer):
+
+```bash
+npx skills add OthmanAdi/loophole --skill ableton-live
+```
 
 The `ableton-live` skill (alias `loophole`) reads `bridge.json` and writes this
 config for you:

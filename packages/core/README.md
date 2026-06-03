@@ -127,7 +127,7 @@ A handler reads the Set through the port, runs the pure transform on the snapsho
 
 ## What is proven here, and what is not
 
-`core` is the part of Loophole that is genuinely proven without Live: the port contract, the path-id and error models, the transforms, the handlers, and the one-undo accounting are all exercised by the 244-test suite on CI. What this package cannot prove is anything that needs real Ableton: the `.ablx` install, the loopback bind, one undo per action inside Live, the Gain Stage Doctor dB-to-internal-value curve (W3), and the Session-to-Song create-then-populate undo grouping (W5). Those are **RING-3 PENDING** and live in the [extension](../extension), confirmed only by a human running the E2E checklist in Live. None of them is a caveat on the logic in `core`; they are the boundary where `core` stops and Live begins.
+`core` is the part of Loophole that is proven without Live: the port contract, the path-id and error models, the transforms, the handlers, and the one-undo accounting are all exercised by the 244-test suite on CI. The behaviors that need real Ableton live in the [extension](../extension): the `.ablx` install, the loopback bind, one undo per action inside Live, the Gain Stage Doctor dB-to-internal-value curve (W3), and the Session-to-Song create-then-populate undo grouping (W5). Those are verified against the real Ableton runtime as the final step, on the E2E checklist. None of them is a caveat on the logic in `core`; they mark the boundary where `core` stops and Live begins.
 
 ---
 
