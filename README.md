@@ -1,13 +1,23 @@
-# Loophole
+<p align="center">
+  <img src="assets/loophole-banner.svg" alt="Loophole, an MCP server and extension kit for Ableton Live, built on Ableton's official Extensions SDK" width="640" />
+</p>
 
-**Loophole is an Ableton MCP server and extension kit: control Ableton Live from Claude and any LLM through one `.ablx` you install in Settings.** No Remote Script, no AbletonOSC, no Max for Live.
+<p align="center">
+  <a href="https://github.com/OthmanAdi/loophole/actions/workflows/ci.yml"><img src="https://github.com/OthmanAdi/loophole/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/OthmanAdi/loophole?label=license&color=3c873a" alt="MIT license" /></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-3c873a?logo=nodedotjs&logoColor=white" alt="Runs on Node 22 and 24" /></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-spec_2025--11--25-1f6feb" alt="Built on the Model Context Protocol, spec revision 2025-11-25" /></a>
+  <a href="#build-wave-roadmap"><img src="https://img.shields.io/badge/status-pre--release%20%C2%B7%20building%20in%20the%20open-f59e0b" alt="Status: pre-release, building in the open" /></a>
+</p>
+
+**Loophole is an Ableton MCP server and extension kit, built so you can control Ableton Live from Claude or any LLM through one `.ablx` you install in Settings.** No Remote Script, no AbletonOSC, no Max for Live.
 
 Loophole is two things that feed each other:
 
 - **The Loophole Kit:** a small set of focused Ableton extensions for the chores that eat studio time (arrangement, gain staging, set hygiene, scale, groove).
 - **The Loophole Bridge:** an MCP server that lets an LLM (Claude, Cursor, any MCP client) read and edit your Live Set through the same official API the Kit uses.
 
-Each proves the other. The Kit shows the API does real work and reaches producers; the Bridge reaches the dev and AI crowd. One brand, one flywheel, one install path.
+The Kit proves the API does real work and reaches producers. The Bridge reaches the dev and AI crowd. They share one codebase and one install path.
 
 > **Status:** early/pre-release. The Ableton Extensions SDK shipped as a public beta on 2026-06-02 and Loophole is being built in the open against it. Code lands wave by wave (see the [roadmap](#build-wave-roadmap)). Treat everything here as a working spec until the wave that ships it is marked done.
 
@@ -35,27 +45,24 @@ That is the whole claim. Read the [prior art](#built-on-and-prior-art) section b
 
 The Bridge does not run as a standalone process you launch. It boots _inside_ Live's Extension Host (the persistent Node process Ableton owns) when the extension activates, and it binds an HTTP server to loopback. Your MCP client connects to that.
 
-```
-  Claude / Cursor / any MCP client            Ableton Live 12 Suite
-  ┌────────────────────────────┐      ┌──────────────────────────────────┐
-  │ MCP client                  │      │ Extension Host (persistent Node)   │
-  │  transport: streamable-http │ HTTP │  ┌──────────────────────────────┐ │
-  │  url: http://127.0.0.1:PORT ├─────▶│  │ Loophole Bridge (MCP server)  │ │
-  │  Authorization: Bearer …    │◀─────┤  │  tools + WriteQueue + resolver │ │
-  └────────────────────────────┘ +SSE │  └──────────────┬───────────────┘ │
-                                       │   sync reads     │  async writes    │
-                                       │  ┌───────────────▼────────────────┐│
-                                       │  │ Live Set: song ▸ tracks ▸ clips ││
-                                       │  │ ▸ notes ▸ devices ▸ params ▸ …  ││
-                                       │  └─────────────────────────────────┘│
-                                       └──────────────────────────────────────┘
+```mermaid
+flowchart LR
+    client["LLM client<br/>Claude, Cursor, any MCP client"]
+    subgraph host["Ableton Live 12, Extension Host (persistent Node)"]
+        bridge["Loophole Bridge (MCP server)<br/>tools, WriteQueue, path-id resolver"]
+        set["Live Set<br/>song / tracks / clips / notes / devices / params"]
+        bridge -- "sync reads, queued writes" --> set
+    end
+    client -- "HTTP + SSE on 127.0.0.1, Bearer token" --> bridge
+    classDef accent fill:#E9A23B,stroke:#9A6A1A,color:#160F02,font-weight:bold;
+    class bridge accent;
 ```
 
 The server addresses objects by stable path ids (`track:2/clipslot:4`) that re-resolve on every call, so nothing host-local ever crosses the wire. Reads are synchronous. Every write serializes through one queue and is wrapped so that one tool call equals one Live undo step.
 
 ---
 
-## The deterministic command layer, and a thin AI surface
+## Deterministic commands, a thin AI surface
 
 The tools are the product. Each one is a deterministic command: validated input (Zod), a single well-defined effect on the Set, a structured result. The LLM only decides _which_ command to run and _with what arguments_. It never touches Live directly.
 
@@ -96,8 +103,8 @@ When the Bridge ships, the install will be: install one `.ablx` in Live's Settin
 ```
 loophole/
 ├─ packages/
-│  ├─ mcp/         @othmanadi/ableton-mcp  — the Bridge, published, transport-agnostic
-│  └─ extension/   @othmanadi/loophole-extension — the .ablx shell, private (placeholder in W0)
+│  ├─ mcp/          @othmanadi/ableton-mcp           the published Bridge, transport-agnostic
+│  └─ extension/    @othmanadi/loophole-extension     the .ablx shell, private (W0 placeholder)
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json
 └─ README.md  CONTRIBUTING.md  SECURITY.md  CODE_OF_CONDUCT.md  LICENSE
