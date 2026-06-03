@@ -57,7 +57,10 @@ function buildToolBlock() {
  * every page (§1.5 step 3, §1.6).
  */
 export default defineConfig({
-  site: 'https://docs.loophole.dev',
+  // GitHub Pages project site. When a custom domain (docs.loophole.dev) is set up
+  // later, change `site` to it and drop `base` (and add a CNAME).
+  site: 'https://othmanadi.github.io',
+  base: '/loophole',
   // Astro's passthrough image service: the docs ship Mermaid (text) and SVG, not
   // raster images that need processing, so we skip the sharp pipeline. This keeps
   // the build green in constrained/CI environments where the native sharp binary

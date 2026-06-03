@@ -48,7 +48,6 @@ A map of the repo, so a stranger finds anything in one hop. Each piece links to 
 | **Kit (extension)** | [`packages/extension`](packages/extension) · `@othmanadi/loophole-extension` | The `.ablx` shell: the SDK adapter, `activate()`, five context-menu commands, and webviews. The only package that touches the SDK; private, never on npm. | [packages/extension/README.md](packages/extension/README.md) |
 | **Docs**            | [`docs/`](docs)                                                              | Standalone Astro Starlight site: install guides, the auto-generated tool reference, recipes, and a build-your-own track.                                  | [docs/README.md](docs/README.md)                             |
 | **Skill**           | [`skills/ableton-live`](skills/ableton-live)                                 | A thin developer-experience layer: `/doctor` prerequisite checks, `/setup` client config from `bridge.json`, and reusable Live-editing recipes.           | [skills/ableton-live/SKILL.md](skills/ableton-live/SKILL.md) |
-| **Launch prep**     | [`launch/`](launch)                                                          | Staged, unexecuted launch material: registry sequence, awesome-list drafts, SEO values, and the launch-week plan. Nothing posts without approval.         | [launch/LAUNCH_WEEK.md](launch/LAUNCH_WEEK.md)               |
 
 The split is deliberate and the license forces it. `core` is the SDK-free heart, fully tested with no Live. `mcp` builds the MCP server on top of `core` and stays free of the beta SDK. `extension` is the deployment shell that packages to `.ablx`, and it is the only place the SDK is imported (in the adapter, the five command modules, and `activate()`), all behind the `LiveBridge` interface. That is why `core` and the whole server are testable without Live. See [CONTRIBUTING.md](CONTRIBUTING.md) for the `LiveBridge` rule and why the SDK never enters the source tree or the lockfile.
 
@@ -146,7 +145,6 @@ loophole/
 ├─ docs/            standalone Astro Starlight site: guides + auto-generated tool reference
 ├─ skills/
 │  └─ ableton-live/ the /doctor + /setup + recipes developer-experience skill
-├─ launch/          staged launch prep (registry sequence, SEO, awesome-list drafts); nothing executed
 ├─ assets/          the brand SVG family (banner + one per package)
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json
@@ -172,7 +170,7 @@ What Loophole does **not** claim: not "first Ableton MCP" (ahujasid got there in
 
 ## Build-wave roadmap
 
-Sequenced so each wave ships standalone value and de-risks the next. Full detail lives in the mission plan; this is the summary. Every wave below is **on `main` with CI green**; what remains is in-Live verification (RING-3) and the user-gated public launch.
+Sequenced so each wave ships standalone value and de-risks the next. Every wave below is **on `main` with CI green**; what remains is in-Live verification (RING-3) and a public launch.
 
 | Wave   | Milestone                    | One line                                                                                                                                      |
 | ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,7 +182,7 @@ Sequenced so each wave ships standalone value and de-risks the next. Full detail
 | **W5** | Session-to-Song Builder      | The flagship extension: turn a Session full of loops into a finished Arrangement in one transaction.                                          |
 | **W6** | Set Janitor                  | Broadest read pass: empties, bad names, colors, overruns, fixed in one transaction.                                                           |
 | **W7** | Docs site, registries, skill | Docs site with an auto-generated tool reference, registry prep, a `/doctor` + `/setup` helper skill.                                          |
-| **W8** | Launch week                  | Registries and indexes first, spikes second. Staged in [`launch/`](launch); nothing posts without approval.                                   |
+| **W8** | Launch week                  | Registries and indexes first, spikes second; nothing posts without explicit approval.                                                         |
 
 ---
 
