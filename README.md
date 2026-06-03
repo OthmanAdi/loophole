@@ -10,7 +10,7 @@
   <a href="#build-wave-roadmap"><img src="https://img.shields.io/badge/status-pre--release%20%C2%B7%20building%20in%20the%20open-f59e0b" alt="Status: pre-release, building in the open" /></a>
 </p>
 
-**Loophole is an Ableton MCP server and extension kit, built so you can control Ableton Live from Claude or any LLM through one `.ablx` you install in Settings.** No Remote Script, no AbletonOSC, no Max for Live.
+**Loophole is an Ableton MCP server and extension kit, built so you can control Ableton Live from Claude or any LLM through one `.ablx` you install in Settings.** It runs _inside_ Live on Ableton's official Extensions SDK, which makes it **the first MCP server built on Ableton's official Extensions SDK.** No Remote Script, no AbletonOSC, no Max for Live.
 
 Loophole is two things that feed each other:
 
@@ -19,7 +19,38 @@ Loophole is two things that feed each other:
 
 The Kit proves the API does real work and reaches producers. The Bridge reaches the dev and AI crowd. They share one codebase and one install path.
 
-> **Status:** early/pre-release. The Ableton Extensions SDK shipped as a public beta on 2026-06-02 and Loophole is being built in the open against it. Code lands wave by wave (see the [roadmap](#build-wave-roadmap)). Treat everything here as a working spec until the wave that ships it is marked done.
+> **Status:** pre-release, building in the open. The Ableton Extensions SDK shipped as a public beta on 2026-06-02 and Loophole is being built against it. The whole monorepo (core, bridge, kit, docs, skill, launch prep) is on `main` with CI green. Everything machine-checkable is tested without Live; the in-Live behaviors are labeled **RING-3 PENDING** and confirmed only by a human running the [E2E checklist](packages/extension/README.md) in real Ableton. Do not read any claim here as Live-proven.
+
+```mermaid
+flowchart LR
+    kit["Loophole Kit<br/>five .ablx extensions<br/>(producers)"]
+    bridge["Loophole Bridge<br/>MCP server (devs, AI)"]
+    docs["docs + skill<br/>guides, tool reference"]
+    users["users<br/>producers + builders"]
+    kit -- "proves the API does real work" --> bridge
+    bridge -- "tool reference, recipes" --> docs
+    docs -- "lowers the on-ramp" --> users
+    users -- "adoption, feedback, more chores to automate" --> kit
+    classDef accent fill:#E9A23B,stroke:#9A6A1A,color:#160F02,font-weight:bold;
+    class kit accent;
+```
+
+---
+
+## Where everything lives
+
+A map of the repo, so a stranger finds anything in one hop. Each piece links to its own README.
+
+| Piece               | Package / path                                                               | One-line purpose                                                                                                                                          | README                                                       |
+| ------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **Core**            | [`packages/core`](packages/core) · `@othmanadi/loophole-core`                | The SDK-free heart: the `LiveBridge` port, DTOs, `FakeLiveBridge`, and the pure transforms every extension and tool reuses. Fully tested without Live.    | [packages/core/README.md](packages/core/README.md)           |
+| **Bridge**          | [`packages/mcp`](packages/mcp) · `@othmanadi/ableton-mcp`                    | The MCP server: `buildServer`, 12 deterministic tools, read-only resources, the one-undo guarantee. Transport-agnostic and SDK-free; not yet on npm.      | [packages/mcp/README.md](packages/mcp/README.md)             |
+| **Kit (extension)** | [`packages/extension`](packages/extension) · `@othmanadi/loophole-extension` | The `.ablx` shell: the SDK adapter, `activate()`, five context-menu commands, and webviews. The only package that touches the SDK; private, never on npm. | [packages/extension/README.md](packages/extension/README.md) |
+| **Docs**            | [`docs/`](docs)                                                              | Standalone Astro Starlight site: install guides, the auto-generated tool reference, recipes, and a build-your-own track.                                  | [docs/README.md](docs/README.md)                             |
+| **Skill**           | [`skills/ableton-live`](skills/ableton-live)                                 | A thin developer-experience layer: `/doctor` prerequisite checks, `/setup` client config from `bridge.json`, and reusable Live-editing recipes.           | [skills/ableton-live/SKILL.md](skills/ableton-live/SKILL.md) |
+| **Launch prep**     | [`launch/`](launch)                                                          | Staged, unexecuted launch material: registry sequence, awesome-list drafts, SEO values, and the launch-week plan. Nothing posts without approval.         | [launch/LAUNCH_WEEK.md](launch/LAUNCH_WEEK.md)               |
+
+The split is deliberate and the license forces it. `core` is the SDK-free heart, fully tested with no Live. `mcp` builds the MCP server on top of `core` and stays free of the beta SDK. `extension` is the deployment shell that packages to `.ablx`, and it is the only place the SDK is imported (in the adapter, the five command modules, and `activate()`), all behind the `LiveBridge` interface. That is why `core` and the whole server are testable without Live. See [CONTRIBUTING.md](CONTRIBUTING.md) for the `LiveBridge` rule and why the SDK never enters the source tree or the lockfile.
 
 ---
 
@@ -70,9 +101,9 @@ That split is the safety story and the test story. The deterministic layer is co
 
 ---
 
-## The Loophole Kit (planned)
+## The Loophole Kit
 
-Five extensions under one kit. All are planned and land across the waves below; none ship before its wave is marked done.
+Five extensions under one kit, all reachable from Live's right-click menu, each one undo step. The intelligence lives in [`core`](packages/core) and is fully tested without Live; the in-Live behavior is **RING-3 PENDING** until the [E2E checklist](packages/extension/README.md) is run in real Ableton.
 
 | Extension                              | What it does                                                                                                                                             |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -82,19 +113,25 @@ Five extensions under one kit. All are planned and land across the waves below; 
 | **Scale Lock**                         | Snaps MIDI to the scale already set in the Live Set, so the result is correct by construction.                                                           |
 | **Humanize**                           | Nudges note timing, velocity, and probability off the grid for quick, musical passes.                                                                    |
 
-**Beta limits, stated plainly.** The Extensions SDK is v1.0.0-beta: `renderPreFxAudio` is pre-FX and audio-tracks-only; device insertion is built-in Live devices only; there is no automation, CC, clip-gain, or routing API; extensions are user-invoked, never auto-triggered; assume 4/4 unless a scene signature is read. These shape what the Kit and the Bridge can and cannot do today.
+**Beta limits, stated plainly.** The Extensions SDK is v1.0.0-beta: `renderPreFxAudio` is pre-FX and audio-tracks-only; device insertion is built-in Live devices only; there is no automation, CC, clip-gain, or routing API; extensions are user-invoked, never auto-triggered; assume 4/4 unless a scene signature is read. These shape what the Kit and the Bridge can and cannot do today. The full, per-extension limits are in the [Kit README](packages/extension/README.md).
 
 ---
 
 ## Quickstart (pre-release)
 
-There is no published package or `.ablx` yet. This section will fill in as the waves ship. Right now the honest path is:
+There is no published package or `.ablx` yet. The honest path today:
 
-1. Read the [build-wave roadmap](#build-wave-roadmap) to see what exists.
-2. Clone the repo and run the test suite (no Live or Ableton license needed for rings 1 and 2): see [CONTRIBUTING.md](CONTRIBUTING.md).
-3. Watch the roadmap. The first end-to-end install path lands with W1 (Scale Lock) for the Kit and W4 for the Bridge.
+1. **Clone and run the tests.** Rings 1 and 2 need no Live and no Ableton license. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-When the Bridge ships, the install will be: install one `.ablx` in Live's Settings, copy the printed `127.0.0.1:PORT` and token, paste them into your MCP client. That is the whole setup.
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm -r test
+   ```
+
+2. **Read the package READMEs** in the [map](#where-everything-lives) for the piece you care about: the [Bridge](packages/mcp/README.md) (the MCP server and its 12 tools), the [Kit](packages/extension/README.md) (the five extensions), or the [core](packages/core/README.md) (the SDK-free heart).
+3. **Build the `.ablx` locally** if you have the SDK from Ableton's Beta Program: the local build and package steps are in the [Kit README](packages/extension/README.md). The SDK is a local-only prerequisite and never enters the tree.
+
+When the Bridge ships, the install will be: install one `.ablx` in Live's Settings, copy the printed `127.0.0.1:PORT` and token, paste them into your MCP client (the [`/setup`](skills/ableton-live/SKILL.md) skill emits the config). That is the whole setup.
 
 ---
 
@@ -103,15 +140,20 @@ When the Bridge ships, the install will be: install one `.ablx` in Live's Settin
 ```
 loophole/
 ├─ packages/
-│  ├─ core/         @othmanadi/loophole-core          SDK-free heart: the LiveBridge port, DTOs, FakeLiveBridge, transforms
-│  ├─ mcp/          @othmanadi/ableton-mcp            the published Bridge, transport-agnostic
-│  └─ extension/    @othmanadi/loophole-extension     the .ablx shell, private (built in a later wave)
+│  ├─ core/         @othmanadi/loophole-core        SDK-free heart: the LiveBridge port, DTOs, FakeLiveBridge, transforms
+│  ├─ mcp/          @othmanadi/ableton-mcp          the Loophole Bridge: MCP server, 12 tools, resources (public)
+│  └─ extension/    @othmanadi/loophole-extension   the Loophole Kit .ablx shell: SDK adapter + activate() + 5 commands (private)
+├─ docs/            standalone Astro Starlight site: guides + auto-generated tool reference
+├─ skills/
+│  └─ ableton-live/ the /doctor + /setup + recipes developer-experience skill
+├─ launch/          staged launch prep (registry sequence, SEO, awesome-list drafts); nothing executed
+├─ assets/          the brand SVG family (banner + one per package)
 ├─ pnpm-workspace.yaml
 ├─ tsconfig.base.json
 └─ README.md  CONTRIBUTING.md  SECURITY.md  CODE_OF_CONDUCT.md  LICENSE
 ```
 
-The split is deliberate. `core` is the SDK-free heart (the `LiveBridge` port, DTOs, a faithful `FakeLiveBridge`, and the pure transforms), fully tested with no Live. The published `mcp` package builds the MCP server on top of `core` and stays free of Live's beta SDK. The `extension` package is the deployment shell that packages to `.ablx`. The only file that ever imports the Ableton SDK is one adapter behind the `LiveBridge` interface, which is why the whole server is testable without Live (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+The [map above](#where-everything-lives) links each piece to its own README. The docs site lives under `docs/` as a standalone npm project (its own toolchain), not a pnpm workspace member, so the lean monorepo CI stays decoupled from the docs build.
 
 ---
 
@@ -120,7 +162,7 @@ The split is deliberate. `core` is the SDK-free heart (the `LiveBridge` port, DT
 Loophole stands on work that came first, and credits it.
 
 - **[Ableton Extensions SDK](https://ableton.github.io/extensions-sdk/)** is the foundation. Loophole is an Extensions-SDK consumer, not affiliated with or endorsed by Ableton.
-- **[ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp)** defined the category (Claude controlling Live via an MCP server) and carries the mindshare. Loophole differs in one concrete way: it runs on the official SDK, so there is no Remote Script to install.
+- **[ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp)** defined the category (Claude controlling Live via an MCP server) and carries the mindshare (around 2.6k stars). Loophole differs in one concrete way: it runs on the official SDK, so there is no Remote Script to install.
 - **[Producer Pal](https://producer-pal.org/)** ([adamjmurray/producer-pal](https://github.com/adamjmurray/producer-pal)) is the craft bar: a polished, multi-LLM Max for Live MCP with its own docs site. Loophole treats it as the bar to match, not as an opponent, and differs on transport (official SDK vs Max for Live).
 - **[ableton-js](https://github.com/leolabs/ableton-js)** and **[AbletonOSC](https://github.com/ideoforms/AbletonOSC)** are the Node and OSC prior art the older bridges stand on. Same idea, different (unofficial) surface.
 
@@ -130,21 +172,19 @@ What Loophole does **not** claim: not "first Ableton MCP" (ahujasid got there in
 
 ## Build-wave roadmap
 
-Sequenced so each wave ships standalone value and de-risks the next. Full detail lives in the mission plan; this is the summary.
+Sequenced so each wave ships standalone value and de-risks the next. Full detail lives in the mission plan; this is the summary. Every wave below is **on `main` with CI green**; what remains is in-Live verification (RING-3) and the user-gated public launch.
 
-| Wave   | Milestone                    | One line                                                                                                                                        |
-| ------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **W0** | Repo skeleton                | pnpm monorepo, strict TS base, ESLint + Prettier, Vitest, the `LiveBridge` seam + `FakeLiveBridge`, CI. Tests green with no Live.               |
-| **W1** | Scale Lock                   | First extension end to end: MIDI read-map-write, packaged `.ablx`, runs in Live, one undo reverts.                                              |
-| **W2** | Humanize                     | Reuses the W1 MIDI loop; timing, velocity, and probability deviation.                                                                           |
-| **W3** | Gain Stage Doctor            | Render pre-FX audio, measure peak/RMS/crest, write a corrective trim in one undo.                                                               |
-| **W4** | Loophole Bridge v0.1         | The headline: in-process HTTP MCP server with the first ~12 tools and read-only resources. Claude connects over loopback and edits a real clip. |
-| **W5** | Session-to-Song Builder      | The flagship extension: turn a Session full of loops into a finished Arrangement in one transaction.                                            |
-| **W6** | Set Janitor                  | Broadest read pass: empties, bad names, colors, overruns, fixed in one transaction.                                                             |
-| **W7** | Docs site, registries, skill | Docs site with an auto-generated tool reference, registry listings, a `/doctor` + `/setup` helper skill.                                        |
-| **W8** | Launch week                  | Registries and indexes first, spikes second.                                                                                                    |
-
-This README ships at W0 against that plan. Sections describing later waves are the spec for what those waves deliver.
+| Wave   | Milestone                    | One line                                                                                                                                      |
+| ------ | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **W0** | Repo skeleton                | pnpm monorepo, strict TS base, ESLint + Prettier, Vitest, the `LiveBridge` seam + `FakeLiveBridge`, CI. Tests green with no Live.             |
+| **W1** | Scale Lock                   | First extension end to end: MIDI read-map-write, packaged `.ablx`, one undo reverts. In-Live run is RING-3 PENDING.                           |
+| **W2** | Humanize                     | Reuses the W1 MIDI loop; timing, velocity, and probability deviation.                                                                         |
+| **W3** | Gain Stage Doctor            | Render pre-FX audio, measure peak/RMS/crest, write a corrective trim in one undo. The dB curve is a RING-3 de-risk.                           |
+| **W4** | Loophole Bridge v0.1         | The headline: in-process HTTP MCP server with 12 tools and read-only resources. Claude connects over loopback and edits a real clip (RING-3). |
+| **W5** | Session-to-Song Builder      | The flagship extension: turn a Session full of loops into a finished Arrangement in one transaction.                                          |
+| **W6** | Set Janitor                  | Broadest read pass: empties, bad names, colors, overruns, fixed in one transaction.                                                           |
+| **W7** | Docs site, registries, skill | Docs site with an auto-generated tool reference, registry prep, a `/doctor` + `/setup` helper skill.                                          |
+| **W8** | Launch week                  | Registries and indexes first, spikes second. Staged in [`launch/`](launch); nothing posts without approval.                                   |
 
 ---
 
