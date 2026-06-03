@@ -1,0 +1,24 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.OthmanAdi/ableton",
+  "description": "Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK: one .ablx, no Remote Script, no Max for Live.",
+  "version": "0.1.0",
+  "websiteUrl": "https://docs.loophole.dev",
+  "repository": {
+    "url": "https://github.com/OthmanAdi/loophole",
+    "source": "github",
+    "subfolder": "packages/mcp"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@othmanadi/ableton-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "streamable-http"
+      }
+    }
+  ],
+  "_loophole_publish_notes": "DRAFT, not submitted. Three things must be true before this validates and publishes (see launch/REGISTRY.md). (1) @othmanadi/ableton-mcp must be published to npm at the matching version with package.json carrying \"mcpName\": \"io.github.OthmanAdi/ableton\" (the registry verifies npm ownership via that field equalling the name above). (2) Reconcile the transport honestly: the bridge runs INSIDE Ableton's Extension Host and binds streamable-http to 127.0.0.1 on a probed port (8420-8429) that the extension writes to storageDirectory/bridge.json; it is not a standalone server you launch with a fixed URL, and the npm package exports buildServer as a library, not an npx entry. So no fixed remotes[].url and no runtimeHint/npx is claimed here. Confirm at publish time whether the registry wants the per-machine local URL expressed as a remotes[] entry with a {port} variable or left to the package transport; pick whichever validates against the live 2025-12-11 schema without implying a runnable hosted endpoint. (3) Set the real published version in both version fields. Re-verify the schema URL and field names against the live registry docs at publish time; this draft was shaped from the 2025-12-11 schema reference and the 04_LAUNCH_SPEC publish workflow."
+}
