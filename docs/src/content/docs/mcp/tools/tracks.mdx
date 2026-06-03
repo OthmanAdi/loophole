@@ -1,0 +1,12 @@
+---
+title: Track tools
+description: Find a track, create a track, and set track properties over MCP.
+---
+
+import ToolCategory from '../../../../components/ToolCategory.astro';
+
+Tools that resolve, create, and edit tracks. `live_find_track` turns a human
+name into a stable id the other tools take. Naming a freshly created track is a
+separate call (the SDK creates, then configures, as two undo steps).
+
+<ToolCategory names={['live_find_track', 'live_create_track', 'live_set_track_props']} />

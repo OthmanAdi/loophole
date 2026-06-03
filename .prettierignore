@@ -5,3 +5,9 @@ pnpm-lock.yaml
 *.tgz
 *.svg
 .git
+
+# The docs site is a STANDALONE npm project under docs/ (not a pnpm workspace
+# member). It has its own toolchain and is formatted there; the root monorepo
+# prettier (no Astro parser plugin) must not sweep it, or `format:check` errors
+# on .astro files and couples the lean monorepo CI to the docs build.
+docs

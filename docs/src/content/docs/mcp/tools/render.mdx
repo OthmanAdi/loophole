@@ -1,0 +1,14 @@
+---
+title: Render tool
+description: Bounce a track's pre-FX audio over a beat range to a WAV file.
+---
+
+import ToolCategory from '../../../../components/ToolCategory.astro';
+
+`live_render_track` bounces a track's pre-FX audio over a beat range to a WAV in
+the temp directory and returns the path. It is the seam the Gain Stage Doctor
+extension measures on. The render is pre-FX (the source level into the track,
+before the track's own effects) and practical for audio tracks; it does not
+produce a post-FX master bounce. It produces a file, so there is nothing to undo.
+
+<ToolCategory names={['live_render_track']} />

@@ -1,0 +1,129 @@
+---
+/**
+ * ToolCard.astro (04_LAUNCH_SPEC §1.5 step 2).
+ *
+ * Renders one MCP tool from the generated `tools.json`: its name, description,
+ * read/write badge, and a parameter table built from `inputSchema.properties`
+ * with required params marked. The category pages (`/mcp/tools/*`) compose these
+ * cards; no tool table is ever hand-written, so the reference cannot drift from
+ * the running server.
+ *
+ * The shape consumed here is the JSON Schema the MCP SDK publishes for each
+ * tool's Zod schema: `inputSchema.type === "object"`, an optional `properties`
+ * map, and an optional `required` array. A nested object param (e.g. the `props`
+ * of `live_set_track_props`) renders as a single row of type "object"; the card
+ * does not recurse, which matches the spec's reference component.
+ */
+
+interface JsonSchemaProp {
+  type?: string | string[];
+  description?: string;
+  enum?: unknown[];
+  items?: { type?: string | string[] };
+}
+
+interface McpTool {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type?: string;
+    properties?: Record<string, JsonSchemaProp>;
+    required?: string[];
+  };
+  annotations?: {
+    readOnlyHint?: boolean;
+  };
+}
+
+interface Props {
+  tool: McpTool;
+}
+
+const { tool } = Astro.props;
+const properties = Object.entries(tool.inputSchema?.properties ?? {});
+const required = new Set(tool.inputSchema?.required ?? []);
+const readOnly = tool.annotations?.readOnlyHint === true;
+
+/** Render a JSON Schema `type` (which can be a string or a string array, and may
+ * append `[]` for arrays) into one readable cell value. */
+function renderType(schema: JsonSchemaProp): string {
+  const base = Array.isArray(schema.type) ? schema.type.join(' | ') : (schema.type ?? 'unknown');
+  if (base === 'array' && schema.items?.type) {
+    const itemType = Array.isArray(schema.items.type)
+      ? schema.items.type.join(' | ')
+      : schema.items.type;
+    return `${itemType}[]`;
+  }
+  if (Array.isArray(schema.enum) && schema.enum.length > 0) {
+    return schema.enum.map((value) => JSON.stringify(value)).join(' | ');
+  }
+  return base;
+}
+---
+
+<section class="tool-card">
+  <h3 id={tool.name}>
+    <code>{tool.name}</code>
+    <span class={`tool-badge ${readOnly ? 'read' : 'write'}`}>{readOnly ? 'read' : 'write'}</span>
+  </h3>
+  {tool.description && <p>{tool.description}</p>}
+  {
+    properties.length > 0 ? (
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Type</th>
+            <th>Required</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {properties.map(([name, schema]) => (
+            <tr>
+              <td>
+                <code>{name}</code>
+              </td>
+              <td>
+                <code>{renderType(schema)}</code>
+              </td>
+              <td>{required.has(name) ? 'yes' : 'no'}</td>
+              <td>{schema.description ?? ''}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    ) : (
+      <p class="tool-noargs">Takes no arguments.</p>
+    )
+  }
+</section>
+
+<style>
+  .tool-card {
+    margin-block: 2rem;
+  }
+  .tool-card h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .tool-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.5rem;
+    border-radius: 0.25rem;
+    border: 1px solid var(--sl-color-gray-4);
+    color: var(--sl-color-gray-1);
+  }
+  .tool-badge.write {
+    border-color: #9a6a1a;
+    color: #e9a23b;
+  }
+  .tool-noargs {
+    color: var(--sl-color-gray-3);
+    font-style: italic;
+  }
+</style>

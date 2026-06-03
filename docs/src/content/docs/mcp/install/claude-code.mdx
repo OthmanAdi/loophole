@@ -1,0 +1,52 @@
+---
+title: Install for Claude Code
+description: Wire Claude Code to the Loophole Bridge over local HTTP, then verify a read-only tool.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Install from source">
+  There is no published `.ablx` yet, so first build and install the extension from source
+  ([Quickstart](/mcp/quickstart/)). The bridge runs inside Live; this page only wires Claude Code to
+  it. With Live running, the extension has written a `bridge.json` (a port and a bearer token) into
+  its storage directory.
+</Aside>
+
+## Connect
+
+Loophole is an HTTP server on loopback, so you add it as an http transport, not
+a spawned command. Use the exact port and token from `bridge.json`.
+
+```bash
+claude mcp add --transport http loophole http://127.0.0.1:<port>/mcp
+# then attach the header: Authorization: Bearer <token-from-bridge.json>
+claude mcp list   # loophole should appear
+```
+
+Confirm the exact header flag against your installed Claude Code version; the
+header carries `Authorization: Bearer <token>`.
+
+## The skill writes this for you
+
+The `ableton-live` skill (alias `loophole`) reads `bridge.json` and writes this
+config for you:
+
+- `/doctor` checks the prerequisites (Live running, extension installed, port
+  reachable, token present) and prints exactly what to fix.
+- `/setup` reads the port and token and emits the correct Claude Code config. It
+  never invents a port or token; if `bridge.json` is missing it tells you to run
+  `/doctor` first.
+
+## Verify it worked
+
+<Steps>
+
+1. Live 12.4.5b Suite is running with the Loophole extension active.
+2. `claude mcp list` shows `loophole`.
+3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
+   confirm it returns your real track names.
+
+</Steps>
+
+If the tool returns your actual tracks, the connection is correct. Otherwise see
+[Troubleshooting](/mcp/troubleshooting/).

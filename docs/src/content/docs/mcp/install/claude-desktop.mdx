@@ -1,0 +1,53 @@
+---
+title: Install for Claude Desktop
+description: Patch the Claude Desktop config to reach the Loophole Bridge, then verify a read-only tool.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Install from source">
+  There is no published `.ablx` yet, so first build and install the extension from source
+  ([Quickstart](/mcp/quickstart/)). With Live running, the extension has written a `bridge.json` (a
+  port and a bearer token) into its storage directory. Use those two values below.
+</Aside>
+
+## Edit the config file
+
+Open the Claude Desktop config and add the `loophole` server. The shape is the
+same on every platform; only the file location differs.
+
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "loophole": {
+      "transport": "http",
+      "url": "http://127.0.0.1:<port>/mcp",
+      "headers": { "Authorization": "Bearer <token-from-bridge.json>" }
+    }
+  }
+}
+```
+
+Replace `<port>` and `<token-from-bridge.json>` with the real values. Then **fully
+quit and reopen Claude Desktop**: closing the window is not enough, the config is
+read on launch.
+
+The `ableton-live` skill's `/setup` can write this file for you from
+`bridge.json`.
+
+## Verify it worked
+
+<Steps>
+
+1. Live 12.4.5b Suite is running with the Loophole extension active.
+2. After the restart, `loophole` appears in Claude Desktop's tool list.
+3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
+   confirm it returns your real track names.
+
+</Steps>
+
+If your real tracks come back, the connection is correct. Otherwise see
+[Troubleshooting](/mcp/troubleshooting/).

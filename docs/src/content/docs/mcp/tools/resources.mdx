@@ -1,0 +1,51 @@
+---
+title: Resources and prompts
+description: Read-only project state the model can browse, and the recipe prompt scaffolds.
+---
+
+Alongside the 12 tools, the bridge exposes read-only MCP **resources** and a
+small set of **prompts**. Resources let the model pull context without spending a
+tool call; prompts are reusable scaffolds that compose the tools. Neither adds
+new capability over the tools, and both return names and string path ids, never a
+host handle.
+
+## Resources
+
+All read-only, all mirroring the read tools, all capped so a large Set never
+floods the context.
+
+| URI                           | Returns                                                                                               |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `ableton://song`              | The overview snapshot: tempo, scale, grid, counts, track list. Same data as `live_get_song_overview`. |
+| `ableton://track/{i}`         | One track's clips (session and arrangement) and its devices and parameters with ids.                  |
+| `ableton://clip/{path}/notes` | The clip's notes as note objects, with the same cap and summary rule as `live_get_notes`.             |
+
+The model can read `ableton://song` as context and only escalate to a tool when
+it needs to act, or needs a filtered or large read.
+
+## Prompts
+
+The prompts ship the cookbook operations as parameterized scaffolds. They
+instruct a sequence of real tool calls; they do not touch Live directly.
+
+| Prompt                          | What it scaffolds                                                                             |
+| ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `humanize_clip(clipId, amount)` | Read notes, nudge timing, velocity, and probability off the grid, write them back.            |
+| `build_arrangement()`           | The session-to-song flow against the read tools (the extension implements the heavy version). |
+| `batch_rename(pattern)`         | Rename tracks via `live_find_track` plus `live_set_track_props`.                              |
+
+There is no Sampling: the server never asks your client to run a model on its
+behalf.
+
+## The error model the model sees
+
+A tool never throws to the protocol. Every failure is a normal result with
+`isError: true` and a recovery hint, so the model can self-correct in one turn:
+
+| Code              | Meaning                                                      | The hint                                   |
+| ----------------- | ------------------------------------------------------------ | ------------------------------------------ |
+| `STALE_REFERENCE` | The path no longer resolves (object deleted, index shifted). | Re-list and use a fresh id.                |
+| `WRONG_TYPE`      | The id is the wrong object type for this tool.               | Use an id from the matching list tool.     |
+| `BAD_INPUT`       | An argument is out of range or malformed.                    | Fix the argument to the stated constraint. |
+| `SDK_REJECTED`    | The host refused the operation, or the queue is full.        | Retry once; if it persists, simplify.      |
+| `UNSUPPORTED`     | The feature is absent in the v1.0.0 API.                     | Do not retry a different path; stop.       |

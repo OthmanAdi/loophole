@@ -1,0 +1,32 @@
+---
+/**
+ * ToolCategory.astro: render every tool whose name is in `names`, in that order,
+ * from the generated `tools.json`. The `/mcp/tools/*` category pages call this
+ * with the tool names that belong to the category, so the page body is one line
+ * and the tables are always generated, never hand-written (04_LAUNCH_SPEC §1.5).
+ */
+import toolsData from '../data/tools.json';
+import ToolCard from './ToolCard.astro';
+
+interface McpTool {
+  name: string;
+  description?: string;
+  inputSchema?: {
+    type?: string;
+    properties?: Record<string, unknown>;
+    required?: string[];
+  };
+  annotations?: { readOnlyHint?: boolean };
+}
+
+interface Props {
+  names: string[];
+}
+
+const { names } = Astro.props;
+const tools = toolsData as McpTool[];
+const byName = new Map(tools.map((tool) => [tool.name, tool]));
+const selected = names.map((name) => byName.get(name)).filter((tool): tool is McpTool => Boolean(tool));
+---
+
+{selected.map((tool) => <ToolCard tool={tool} />)}

@@ -1,0 +1,38 @@
+---
+title: Humanize MIDI in Ableton with AI
+description: Nudge stiff programmed MIDI off the grid through your assistant, in one undo step.
+---
+
+How to humanize MIDI in Ableton with an AI assistant: take a stiff, perfectly
+quantized clip and push the notes slightly off the grid so it breathes, all
+through tools your assistant calls. The whole edit is one undo step.
+
+## What it does
+
+Humanize reads a clip's notes, nudges each note's start time, velocity, and
+optionally length by a small random amount scaled to the grid you have set in
+Live, and writes the notes back. The randomness is the point: run it twice, get
+two feels. It edits MIDI notes only.
+
+## The tool calls
+
+1. `live_find_track` to resolve the track by name, then `live_list_clips` to get
+   the clip id.
+2. `live_get_notes` to read the clip's notes.
+3. The assistant applies the humanize transform to the notes (jitter timing and
+   velocity within grid-scaled bounds).
+4. `live_set_notes` to write the whole note array back.
+
+Step 4 is one `live_set_notes` call, which is one transaction, which is one undo.
+
+## Try it
+
+> Find my "Hats" track, read the clip in the first slot, humanize the timing and
+> velocity by about a third, and write it back.
+
+The assistant resolves the track, reads the notes, transforms them, and writes
+them. Press undo once in Live and the original clip is back.
+
+For a deeper, slider-driven version inside Live with a swing control, the
+[Humanize extension](/extensions/humanize/) does the same work as a right-click
+action.

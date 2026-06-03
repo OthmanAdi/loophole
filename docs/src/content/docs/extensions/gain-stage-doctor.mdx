@@ -1,0 +1,40 @@
+---
+title: Gain Stage Doctor
+description: Measure the pre-FX level of audio tracks and apply a consistent trim, in one undo step.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Gain Stage Doctor measures the pre-FX audio of your audio tracks (true peak, RMS,
+crest factor), shows a table with a suggested trim to hit a target staging level,
+and on confirm writes that trim into each track's mixer volume in one undo. The
+suggestion is computed from the measured level, so it is repeatable.
+
+## What it does
+
+It renders each selected audio track's pre-FX audio over the time range, measures
+level, and suggests a trim toward a target (for example, RMS at -18 dBFS). You
+pick which tracks to apply, and it writes every trim in a single undo.
+
+## Right-click path
+
+Select audio tracks, or an arrangement selection across them, then right-click
+and **Gain Stage…**. A progress bar renders the tracks (cancellable), then a
+table appears: one row per track with peak, RMS, crest, and a suggested trim. Pick
+a target (-12, -18, or -20 dBFS RMS), tick the tracks to apply, and press Apply
+trims.
+
+<Aside type="note" title="Screenshot">
+  A screenshot of the measurement table and a short demo go here once captured in Live 12.4.5b
+  Suite.
+</Aside>
+
+## Honest beta limit
+
+Gain Stage Doctor measures the pre-FX audio of audio tracks. "Pre-FX" means it
+gauges the source level going into the track before the track's own effects, not
+the post-chain or bus level. It works on audio tracks only: MIDI and instrument
+tracks have no pre-FX render in this beta, so freeze or flatten them to audio
+first if you want to stage them. The mixer volume control uses Live's internal
+value scale, so the tool maps your target in dB to that scale and shows you the
+dB it is aiming for. Assumes the time range you select; user-invoked only.

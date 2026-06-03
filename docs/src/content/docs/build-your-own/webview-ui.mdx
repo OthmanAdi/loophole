@@ -1,0 +1,54 @@
+---
+title: Webview UI
+description: Show a modal HTML dialog from an extension and get the result back to the host.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+How an Ableton extension shows a UI: a modal HTML webview, opened from your
+command, that posts its result back to the host. This is how every Loophole Kit
+dialog works.
+
+## Open a modal
+
+From inside a command, open a modal dialog with HTML content and a size:
+
+```ts
+context.ui.showModalDialog({ data: html, mimeType: 'text/html' }, 320, 220);
+```
+
+Keep the dialog small and single-purpose: the live scale and three snap options
+for Scale Lock, a strength slider for Humanize, a measurement table for Gain
+Stage Doctor. One Apply button. No multi-step wizards.
+
+## Return the result to the host
+
+The webview sends its result back by posting a message to the host bridge. The
+convention is a `close_and_send` method with the result serialized in `params`:
+
+```js
+const result = { mode: 'nearest' };
+postToHost({ method: 'close_and_send', params: [JSON.stringify(result)] });
+```
+
+<Aside type="caution" title="Two platforms, two globals">
+The bridge object differs by platform, so ship both paths:
+
+- **Windows:** `window.chrome.webview.postMessage(message)`
+- **macOS:** `window.webkit.messageHandlers.live.postMessage(message)`
+
+Detect which exists and use it. Omitting one means your dialog works on one OS and
+silently fails on the other.
+
+</Aside>
+
+## Keep the logic out of the webview
+
+The webview collects choices; it should not contain the music logic. Loophole's
+dialogs return a small JSON object (the chosen mode, the slider values, the
+ticked items), and the command handler feeds that into a pure transform that is
+tested without Live. The UI is a thin input layer over the same core the bridge
+uses.
+
+For the full webview API and the exact message shape, see
+[Ableton's Extensions SDK docs](https://ableton.github.io/extensions-sdk/).

@@ -1,0 +1,58 @@
+---
+title: Package and share
+description: Build the .ablx, install it, and share it without redistributing the SDK.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+How to package an Ableton extension into a `.ablx` and share it. The build
+bundles your code and the SDK into one installable file; what you may and may not
+redistribute is governed by the SDK license.
+
+## Build the .ablx
+
+<Steps>
+
+1. Bundle for production and package:
+
+   ```bash
+   npm run package   # esbuild --production, then extensions-cli package
+   ```
+
+2. The CLI produces a `.ablx`. That single file is what a user installs in Live:
+   Settings, then Extensions, then add the file, then restart Live.
+
+</Steps>
+
+## What you can share, and what you cannot
+
+<Aside type="caution" title="The SDK license shapes this">
+The Extensions SDK is non-redistributable beta software. Two things follow:
+
+- **You may distribute the built `.ablx`.** The SDK is bundled inside the
+  application you built, and the license permits distributing applications built
+  with it under your own name.
+- **You may not distribute the SDK itself.** Do not commit the SDK tarball, a
+  copy of its type declarations, or any part of it to a public repository. Each
+  user installs the SDK from their own Ableton Beta Program access to build from
+  source.
+
+Loophole keeps its source tree and lockfile SDK-free for exactly this reason, and
+ships the `.ablx` as a release artifact rather than committing it.
+
+</Aside>
+
+## Where to share it
+
+- A **GitHub release** is the natural home for the `.ablx` artifact. Tag a
+  version, attach the file, write honest notes (including the beta limits).
+- The **Ableton Discord `#extensions-gallery`** is the highest-intent place to
+  show producers an extension. A short screen capture with the right-click menu
+  visible reads as native; pair it with the file and a one-line "what it does and
+  what it doesn't."
+
+## Set expectations honestly
+
+State the API version you built against, the Live build you verified in, and the
+limits of what your extension can do in the beta. An honest limit reads as
+competence and survives the first careful look, which is what compounds.

@@ -1,0 +1,14 @@
+---
+title: Device tools
+description: Insert a built-in Live device on a track and set a device parameter.
+---
+
+import ToolCategory from '../../../../components/ToolCategory.astro';
+
+Tools for the device chain. `live_insert_device` adds a built-in Live device and
+returns its parameters with ids, so the model can immediately set one with
+`live_set_param`. Built-in Live devices only: third-party and VST plugins are not
+addressable in this beta. A parameter value must fall within the parameter's own
+min and max, which the tool reports and enforces.
+
+<ToolCategory names={['live_insert_device', 'live_set_param']} />

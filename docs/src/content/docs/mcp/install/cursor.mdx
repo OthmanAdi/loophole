@@ -1,0 +1,52 @@
+---
+title: Install for Cursor
+description: Add the Loophole Bridge to Cursor's MCP config, then verify a read-only tool.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Install from source">
+  There is no published `.ablx` yet, so first build and install the extension from source
+  ([Quickstart](/mcp/quickstart/)). With Live running, the extension has written a `bridge.json` (a
+  port and a bearer token) into its storage directory.
+</Aside>
+
+## Edit the config file
+
+Cursor reads an `mcp.json`. Use the project file to scope Loophole to one
+project, or the global file to make it available everywhere.
+
+- **Project:** `.cursor/mcp.json`
+- **Global:** `~/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "loophole": {
+      "transport": "http",
+      "url": "http://127.0.0.1:<port>/mcp",
+      "headers": { "Authorization": "Bearer <token-from-bridge.json>" }
+    }
+  }
+}
+```
+
+Replace `<port>` and `<token-from-bridge.json>` with the real values from
+`bridge.json`. Reload Cursor's MCP servers (or restart Cursor) so it picks up the
+change.
+
+The `ableton-live` skill's `/setup` can write this file for you.
+
+## Verify it worked
+
+<Steps>
+
+1. Live 12.4.5b Suite is running with the Loophole extension active.
+2. `loophole` appears in Cursor's MCP server list as connected.
+3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
+   confirm it returns your real track names.
+
+</Steps>
+
+If the tool returns your actual tracks, the connection is correct. Otherwise see
+[Troubleshooting](/mcp/troubleshooting/).

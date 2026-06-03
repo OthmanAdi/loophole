@@ -1,0 +1,48 @@
+---
+title: Security
+description: The bind address, the token, the Origin check, and what the bridge never exposes.
+---
+
+The bridge can rewrite your project, so it is locked down even though it only
+listens on loopback. Three controls gate every request, and a short list of
+things never crosses to the model.
+
+## Bind address
+
+The server binds to `127.0.0.1` only, never `0.0.0.0`. It is off the local
+network by construction: another machine cannot reach it.
+
+## Origin check
+
+Every request's `Origin` header is checked. A web origin that is not on the
+allow list is rejected with `403` before the server handles it. This is the
+DNS-rebinding guard: a random browser tab on some site cannot drive Live. Native
+MCP clients send no `Origin` and pass; web origins are rejected.
+
+## Bearer token
+
+On first start the extension generates a random token (at least 16 bytes,
+base64url) and writes it to `bridge.json` in its storage directory, next to the
+chosen port. Every request must carry `Authorization: Bearer <token>`; without
+it the request is rejected with `401` before the server sees it. You paste the
+token into your client config once; the bridge reuses the same file across
+sessions.
+
+## What is never exposed
+
+- **The token.** It never appears in any tool output and is never shown to the
+  model. You handle it once, by hand.
+- **Host handles.** The Live Object Model's handles are host-local and can go
+  stale; they never serialize to the wire. The public address of any object is a
+  string path id.
+- **Your filesystem.** File-taking surfaces are confined: a render writes to the
+  temp directory, and any import is routed through Live's own import so Live
+  manages the copy. The bridge never exposes arbitrary read or write of your disk
+  beyond its own temp and storage directories.
+- **Internals.** The internal transport layer and any secret stored in the
+  storage directory stay inside the host.
+
+## Reporting
+
+Security reports go to the repository's `SECURITY.md` contact, not a public
+issue.

@@ -1,0 +1,37 @@
+---
+title: Scale Lock
+description: Snap every note in a MIDI clip to the scale set in Live, in one undo step.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Scale Lock snaps every note in the selected MIDI clip to the scale currently set
+in Live (read from the Set, not guessed), with a choice of snap up, snap down, or
+nearest. It reports how many notes were off-scale.
+
+## What it does
+
+It reads the root note and scale intervals from your Set, snaps each note's pitch
+into the scale, and writes the notes back. It moves pitch only, never timing. The
+edit is one undo.
+
+## Right-click path
+
+Right-click a MIDI clip (or a clip slot selection), then **Lock to Scale…**. A
+small dialog shows the live scale read from the Set (for example, "Scale: F
+Minor"), three options (Snap up, Snap down, Nearest, with Nearest the default),
+and a count line like "7 of 32 notes are off-scale". Press Apply.
+
+<Aside type="note" title="Screenshot">
+  A screenshot of the dialog and a short before-and-after clip go here once captured in Live 12.4.5b
+  Suite.
+</Aside>
+
+## Honest beta limit
+
+Scale Lock reads the scale you set in Live (root note plus scale intervals) and
+snaps notes to it. It does not invent a key: if no scale is set in the Set, it
+has nothing to snap to. It moves note pitch only, never timing. Microtonal and
+tuning-system scales are out of reach in this beta (the SDK exposes scale
+intervals as semitone offsets and no tuning-system access). User-invoked: right-click
+a clip to run it.

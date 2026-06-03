@@ -1,0 +1,71 @@
+---
+title: Extensions SDK cheatsheet
+description: The handful of SDK calls a context-menu extension actually uses, and the one rule that governs writes.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A practical map of the Ableton Extensions SDK calls a context-menu extension
+uses, grouped by what they do. It is a guide to the shape, not a copy of
+Ableton's reference.
+
+<Aside type="note" title="Source of truth">
+  For the exact signatures, types, and the full surface, read [Ableton's Extensions SDK
+  docs](https://ableton.github.io/extensions-sdk/). This page summarizes how the pieces fit together
+  in a real extension; it does not reproduce Ableton's API declarations.
+</Aside>
+
+## Registering an action
+
+- `initialize(context, '1.0.0')` returns the API for your target version.
+- `api.commands.registerCommand(id, handler)` binds a command id to a function.
+- `api.ui.registerContextMenuAction(scope, label, commandId)` puts the command in
+  the right-click menu for a scope (for example a MIDI clip, a clip slot
+  selection, an audio track). Keep the returned unregister function.
+
+## Reading the Set
+
+Reads are synchronous getters off the song graph: tempo, the root note and scale
+intervals, the grid, the track list, a track's clip slots and devices, a clip's
+notes. Read what you need into plain data, then leave the SDK behind for the
+logic.
+
+## The one rule for writes
+
+Every write goes inside one transaction so it is one undo step:
+
+```ts
+context.withinTransaction(() => {
+  // your writes
+});
+```
+
+Two facts make this work, and getting them wrong is the most common mistake:
+
+- **The transaction callback is synchronous.** Property setters (a clip's notes,
+  a track's name, a clip's color) are synchronous, so they run inline.
+- **Only create, delete, duplicate, and parameter get/set are async.** To group
+  async operations into one undo, return `Promise.all([...])` from the
+  synchronous callback. Never `await` inside the callback.
+
+So a pure-setter edit (snap notes to scale) is a plain synchronous transaction,
+while an edit that creates clips returns a `Promise.all` of the creates. That one
+distinction shapes every write an extension makes.
+
+## Slow operations and cancel
+
+For anything slow (rendering audio, a large batch write), wrap it in a progress
+dialog and honor the abort signal:
+
+```ts
+await context.ui.withinProgressDialog('Working…', { progress }, async (update, signal) => {
+  // call update(...) as you go; bail when signal.aborted
+});
+```
+
+## Webview result
+
+A modal webview returns its result to the host by posting
+`{ method: "close_and_send", params: [resultString] }` to the webview bridge.
+Windows and macOS expose that bridge under different globals, so ship both code
+paths. The [Webview UI](/build-your-own/webview-ui/) page covers this.

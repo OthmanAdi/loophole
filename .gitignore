@@ -8,6 +8,13 @@ build/
 out/
 *.tsbuildinfo
 
+# Docs site (standalone npm project under docs/, NOT a pnpm workspace member).
+# node_modules/ and dist/ above already cover docs/node_modules and docs/dist;
+# .astro is Astro's content-layer + types cache (also at docs/node_modules/.astro).
+# The generated docs/src/data/tools.json is committed on purpose: the prebuild
+# regenerates it and a CI guard (git diff --exit-code) fails on a stale copy.
+.astro/
+
 # Test / coverage
 coverage/
 .nyc_output/

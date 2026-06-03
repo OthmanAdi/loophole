@@ -1,0 +1,45 @@
+---
+title: Tool reference
+description: The complete Loophole Bridge tool surface, generated from the running MCP server.
+---
+
+import toolsData from '../../../data/tools.json';
+
+The Loophole Bridge exposes a small, deliberate set of MCP tools over a Live
+Set. This reference is generated from the server itself: a build step boots the
+real server, calls the standard `tools/list` endpoint, and writes the result to
+`tools.json`, which these pages render. The reference cannot drift from the
+running server, because it is the running server.
+
+There are **{toolsData.length} tools**, grouped by what they touch. Reads carry
+a `read` badge, writes a `write` badge. Every write is exactly one undo step in
+Live.
+
+## Categories
+
+- [Tracks](/mcp/tools/tracks/): find, create, and set track properties.
+- [Clips](/mcp/tools/clips/): list clips on a track and create a MIDI clip.
+- [Notes](/mcp/tools/notes/): read and replace the MIDI notes in a clip.
+- [Devices](/mcp/tools/devices/): insert a built-in device and set a parameter.
+- [Transport](/mcp/tools/transport/): the Set overview and tempo.
+- [Render](/mcp/tools/render/): bounce a track's pre-FX audio to a WAV.
+- [Resources](/mcp/tools/resources/): read-only project state the model can
+  browse without spending a tool call.
+
+## The full list
+
+Every tool name, in one place:
+
+<ul>
+  {toolsData.map((tool) => (
+    <li>
+      <a href={`#${tool.name}`}>
+        <code>{tool.name}</code>
+      </a>{' '}
+      {tool.annotations?.readOnlyHint ? '(read)' : '(write)'}: {tool.description?.split('. ')[0]}.
+    </li>
+  ))}
+</ul>
+
+The anchors above resolve on the category pages. Pick a category to see each
+tool's parameters.

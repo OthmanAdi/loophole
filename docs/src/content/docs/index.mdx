@@ -1,0 +1,78 @@
+---
+title: Loophole
+description: Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK.
+template: splash
+hero:
+  tagline: Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK, so it installs as one .ablx with no Remote Script and no Max for Live.
+  actions:
+    - text: Connect Claude to Live
+      link: /mcp/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: Browse the extensions
+      link: /extensions/install/
+      icon: open-book
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## What this is
+
+Loophole has two halves that share one core.
+
+<CardGrid>
+  <Card title="Loophole Bridge" icon="seti:json">
+    An MCP server that exposes a Live Set to any MCP client (Claude Code, Claude Desktop, Cursor).
+    It runs inside Live as one extension, speaks Streamable HTTP on loopback, and gives an LLM a
+    small set of read and write tools over tracks, clips, notes, and devices. Every write is one
+    undo step.
+  </Card>
+  <Card title="Loophole Kit" icon="puzzle">
+    Five Ableton extensions for the work an LLM does not need to be in the loop for: Scale Lock,
+    Humanize, Gain Stage Doctor, Session to Song, and Set Janitor. Each is a right-click action
+    inside Live.
+  </Card>
+</CardGrid>
+
+## The 30 second version
+
+You install one `.ablx` in Live. The extension starts a local MCP server. You
+point your MCP client at it. Now your assistant can read the Set (track names,
+clips, notes) and make edits you can undo in one step: humanize a drum loop,
+build an arrangement from session clips, rename tracks in bulk, write a chord
+progression into a clip.
+
+It is built on Ableton's official Extensions SDK (TypeScript, Node), so there is
+no Remote Script, no AbletonOSC, and no Max for Live in the path. One install.
+
+## Where to go next
+
+- New here: [Quickstart](/mcp/quickstart/) takes you from install to a first
+  tool call.
+- Picking a client: the [install pages](/mcp/install/claude-code/) are one
+  screen each.
+- Curious how it is wired: [How it works](/mcp/how-it-works/).
+- Just want the extensions: [Install a .ablx](/extensions/install/).
+
+## Prior art
+
+Loophole is not the first way to drive Ableton from an assistant, and it does
+not claim to be.
+
+- [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) defined the
+  category. It connects through a Remote Script over a socket.
+- [Producer Pal](https://producer-pal.org) set a high craft bar for AI in Live,
+  built on Max for Live.
+
+The one concrete difference: Loophole is built on Ableton's official Extensions
+SDK, so it installs as a single `.ablx` with no extra bridge to run. That is the
+only "first" claim made anywhere here: the first MCP server built on Ableton's
+official Extensions SDK.
+
+## Status
+
+Beta. The Extensions SDK is `1.0.0-beta`, and so is Loophole. The tools and
+extensions are verified against an in-memory model of the Set in CI; in-Live
+behavior is verified by hand against Live 12.4.5b Suite. Where a limit exists,
+the docs state it.

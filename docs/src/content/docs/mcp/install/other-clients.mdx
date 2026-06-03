@@ -1,0 +1,65 @@
+---
+title: Install for other clients
+description: The generic Streamable HTTP config any MCP client uses to reach the Loophole Bridge.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Install from source">
+  There is no published `.ablx` yet, so first build and install the extension from source
+  ([Quickstart](/mcp/quickstart/)). The bridge runs inside Live and speaks standard MCP over
+  Streamable HTTP, so any compliant client can connect.
+</Aside>
+
+## The connection, in plain terms
+
+Loophole is a standard MCP server on a Streamable HTTP transport, bound to
+loopback. Any MCP client connects with three facts from `bridge.json`:
+
+- **transport:** `http` (Streamable HTTP)
+- **url:** `http://127.0.0.1:<port>/mcp`
+- **header:** `Authorization: Bearer <token>`
+
+Most clients express this as an `mcpServers` map identical to the Claude Desktop
+and Cursor blocks:
+
+```json
+{
+  "mcpServers": {
+    "loophole": {
+      "transport": "http",
+      "url": "http://127.0.0.1:<port>/mcp",
+      "headers": { "Authorization": "Bearer <token-from-bridge.json>" }
+    }
+  }
+}
+```
+
+If your client speaks stdio only, it cannot connect directly; the bridge is
+HTTP-in-host by design (the Extension Host owns stdio). Use a client that
+supports an http or streamable-http transport.
+
+## Check the protocol without a client
+
+The MCP Inspector confirms the server answers before you wire any editor:
+
+```bash
+npx @modelcontextprotocol/inspector
+# connect to http://127.0.0.1:<port>/mcp with the bearer token, then run tools/list
+```
+
+A healthy server lists 12 tools.
+
+## Verify it worked
+
+<Steps>
+
+1. Live 12.4.5b Suite is running with the Loophole extension active.
+2. Your client (or the Inspector) lists the Loophole tools.
+3. Run `live_get_song_overview` (or `live_find_track`) and confirm it returns
+   your real track names.
+
+</Steps>
+
+If the tool returns your actual tracks, the connection is correct. Otherwise see
+[Troubleshooting](/mcp/troubleshooting/).

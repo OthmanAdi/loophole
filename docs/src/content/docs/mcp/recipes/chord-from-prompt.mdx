@@ -1,0 +1,39 @@
+---
+title: Write a chord progression from a prompt
+description: Generate a chord progression into a MIDI clip in Ableton through your assistant.
+---
+
+How to write a chord progression from a prompt in Ableton: describe the
+progression in words and have your assistant write the notes into a MIDI clip,
+ready to play.
+
+## What it does
+
+The assistant turns your description into a set of notes (pitches, start times,
+durations, velocities), creates a MIDI clip if needed, and writes the notes in.
+The write is one undo step.
+
+## The tool calls
+
+1. `live_find_track` to resolve a MIDI track, then `live_list_clips` to find an
+   empty slot.
+2. `live_create_midi_clip` to make an empty clip of the length you want (if you
+   are not writing into an existing clip).
+3. The assistant builds the chord notes from your prompt.
+4. `live_set_notes` to write the notes into the clip.
+
+## Try it
+
+> On my "Keys" track, make a 4-bar clip and write a I, V, vi, IV progression in C
+> major, one chord per bar, as held triads.
+
+The assistant creates the clip and writes the chords. One undo removes the notes;
+another removes the clip (create and write are two steps, as the SDK creates then
+configures).
+
+## The honest limit
+
+The musical choices are the model's. Loophole writes exactly the notes the
+assistant produces; it does not enforce voice leading or correct a questionable
+chord. If you want notes snapped to the scale set in Live afterward, the
+[Scale Lock extension](/extensions/scale-lock/) does that in one undo.

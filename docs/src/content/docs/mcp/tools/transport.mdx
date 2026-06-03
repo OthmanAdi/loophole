@@ -1,0 +1,13 @@
+---
+title: Transport and song tools
+description: Read a one-shot overview of the Set and set the tempo.
+---
+
+import ToolCategory from '../../../../components/ToolCategory.astro';
+
+Song-level tools. `live_get_song_overview` is the cheap orientation snapshot the
+model takes first: tempo, scale and grid, track and scene and cue counts, and
+the track names with ids. `live_set_tempo` sets the Set tempo. The overview is
+also the read-only `ableton://song` resource.
+
+<ToolCategory names={['live_get_song_overview', 'live_set_tempo']} />

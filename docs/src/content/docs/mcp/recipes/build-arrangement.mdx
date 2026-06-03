@@ -1,0 +1,43 @@
+---
+title: Build an arrangement from session clips
+description: Turn a Session full of loops into an arranged song through your assistant.
+---
+
+How to build an arrangement from session clips in Ableton: lay out which scenes
+become which song sections and how many bars each runs, and have your assistant
+write the clips into the Arrangement at the right bars, named and with cue
+points.
+
+## What it does
+
+The bridge has no session-to-arrangement "move" call, so an arrangement is built
+by reading the session and recreating clips on the timeline. The model reads the
+Set, plans section boundaries from bars to beats, and writes the clips. MIDI
+notes are copied; audio clips are referenced by file.
+
+## The tool calls
+
+1. `live_get_song_overview` and `live_list_clips` (per track) to read the
+   session: which scenes hold which clips.
+2. The assistant plans the layout: section order, bars per section, the beat
+   each section starts on.
+3. For each placement, the write tools create and fill clips on the arrangement
+   tracks.
+
+The flagship [Session to Song extension](/extensions/session-to-song/) does the
+heavy version of this as one right-click action, where the entire build is a
+single undo. Through the bridge, the assistant composes the read and write tools
+to the same end.
+
+## Try it
+
+> Read my session. I want Intro 8 bars, Verse 16, Chorus 16, Outro 8. Use scene
+> 1 for the intro, scene 2 for the verse, scene 3 for the chorus, scene 1 again
+> for the outro. Build it on the arrangement.
+
+## The honest limit
+
+Recreating clips copies notes, file references, names, and colors. It does not
+carry warp markers, clip envelopes, or follow actions (the beta does not let an
+extension write those), so warped or automated clips may need a touch-up after
+the build. It assumes 4/4 unless a scene's time signature is read.

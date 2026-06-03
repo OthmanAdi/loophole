@@ -1,0 +1,92 @@
+---
+title: Scaffold an Ableton extension
+description: The minimal shape of an Ableton Extensions SDK extension, the way Loophole is built.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+How to scaffold an Ableton extension with the Extensions SDK: the minimal file
+shape, the `activate()` entry point, and the local build. This is the structure
+Loophole uses, shown so you can build your own.
+
+<Aside type="note" title="On the SDK itself">
+  This page describes the structure of an extension and links to Ableton's official docs for the SDK
+  API. It does not reproduce Ableton's API reference or type declarations: the SDK is
+  non-redistributable beta software, so you install it from your own Ableton Beta Program access.
+  See [Ableton's Extensions SDK docs](https://ableton.github.io/extensions-sdk/) for the API
+  surface.
+</Aside>
+
+## The minimal shape
+
+An extension is a small Node project that the Extensions CLI bundles and Live
+loads. The shape:
+
+```
+my-extension/
+├── manifest.json        name, author, entry, version, minimumApiVersion
+├── tsconfig.json        nodenext, strict, noEmit, rootDir ./src
+├── build.ts             esbuild: bundle src/extension.ts to the manifest entry
+├── package.json         scripts: build (typecheck + bundle), start, package
+└── src/
+    └── extension.ts     activate(context): register your commands here
+```
+
+The `manifest.json` points `entry` at the bundled output and declares the API
+version your code targets:
+
+```json
+{
+  "name": "My Extension",
+  "author": "you",
+  "entry": "dist/extension.js",
+  "version": "0.1.0",
+  "minimumApiVersion": "1.0.0"
+}
+```
+
+## The entry point
+
+`activate(context)` is where you initialize the API and register what your
+extension does. The pattern, from Ableton's own examples:
+
+```ts
+import { initialize, type ActivationContext } from '@ableton-extensions/sdk';
+
+export function activate(context: ActivationContext) {
+  const api = initialize(context, '1.0.0');
+  api.commands.registerCommand('myext.run', () => {
+    // read the Set, do the work, write it back inside one withinTransaction
+  });
+  api.ui.registerContextMenuAction('ClipSlot', 'Do the thing…', 'myext.run');
+}
+```
+
+## Build and run
+
+<Steps>
+
+1. Install the SDK and CLI tarballs you downloaded from the Ableton Beta Program
+   (they are local-only; do not commit them).
+
+2. Bundle and hot-load into a running Live with Dev Mode enabled:
+
+   ```bash
+   npm start   # runs your build.ts, then extensions-cli run
+   ```
+
+3. Package the installable `.ablx`:
+
+   ```bash
+   npm run package   # bundles --production, then extensions-cli package
+   ```
+
+</Steps>
+
+## The pattern that keeps it testable
+
+Loophole splits every extension into a pure core (the music logic, no SDK) and a
+thin SDK shell (`activate()` plus one adapter). The core is tested exhaustively
+without Live; the shell is the only file that imports the SDK. The
+[API cheatsheet](/build-your-own/api-cheatsheet/) lists the handful of calls a
+context-menu extension actually uses.

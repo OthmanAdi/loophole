@@ -1,0 +1,39 @@
+---
+title: Set Janitor
+description: Sweep the whole Set for mess and fix what you tick, in one undo step.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Set Janitor is the whole-set hygiene sweep. One pass finds empty tracks,
+placeholder names, off-palette clip colors, and clips that overrun their loop.
+You tick which to fix; it renames, recolors, or deletes in one undo.
+
+## What it does
+
+It reads the whole Set, detects a list of issues, and groups them. You choose
+which groups to fix. Renames and recolors apply inline; deletes are off by
+default and you opt into them. The whole sweep is one undo.
+
+## Right-click path
+
+Right-click (a general or Scene-scoped entry), then **Clean Up Set…**. A checklist
+dialog shows the issues found, grouped: "3 empty tracks", "7 unnamed clips", "2
+clips overrun their loop", "4 clips off-palette". Tick the groups to fix, then
+press Fix selected. Destructive items (delete a track or clip) are flagged and
+unchecked by default.
+
+<Aside type="note" title="Screenshot">
+  A before-and-after screenshot of a messy Set goes here once captured in Live 12.4.5b Suite.
+</Aside>
+
+## Honest beta limit
+
+Set Janitor sweeps the whole Set for mess and fixes what you tick: empty tracks,
+placeholder names, off-palette clip colors, and clips that overrun their loop. It
+is not a clip renamer (Ableton's own RNMR does that, and better, for
+content-aware MIDI naming); Janitor is the structural sweep around it. Deleting a
+track or clip is permanent within the Set until you undo, so those fixes are off
+by default and you opt into them. It cannot relink missing samples, consolidate
+the project folder, or fix automation, because the beta exposes none of those.
+User-invoked, and the whole sweep is one undo.

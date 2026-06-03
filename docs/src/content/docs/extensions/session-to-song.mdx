@@ -1,0 +1,41 @@
+---
+title: Session to Song
+description: Turn a Session full of loops into an arranged song, in one undo step.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The flagship of the Kit. Session to Song reads your Session clips and recreates
+them in the Arrangement at the bars you lay out: real clips on real tracks,
+named, colored, with named cue points marking each section.
+
+## What it does
+
+You map which Session scenes become which song sections and give each a length
+in bars. The extension plans the section boundaries, then writes the clips into
+the Arrangement. MIDI notes are copied; audio clips are referenced by file. The
+whole build is one undo.
+
+## Right-click path
+
+Right-click a Scene (or use the general entry), then **Build Arrangement from
+Session…**. A dialog opens with a small table: one row per section, each with a
+name, a scene picker, a bar count, and a color. A free-text field also parses a
+line like `Intro 8, Verse 16, Chorus 16, Bridge 8, Outro 8`. Press Build. A
+reverse **Export Structure** reads existing cue points back to text.
+
+<Aside type="note" title="Screenshot">
+  A screenshot and a short demo clip go here once captured in Live 12.4.5b Suite.
+</Aside>
+
+## Honest beta limit
+
+Session to Song reads your Session clips and recreates them in the Arrangement at
+the bars you lay out. It copies MIDI notes and references audio clips by file,
+plus clip name and color. It does not carry over every clip nuance: warp markers,
+clip envelopes, and follow actions are not part of what the beta lets an
+extension write, so complex warped or automated clips may need a touch-up after
+the build. It assumes 4/4 unless a scene's time signature is read (the SDK has no
+Set-level time signature; signature lives on the scene). Locators are written as
+cue points (time plus name), not Live's colored section locators. User-invoked,
+and the whole build is one undo.

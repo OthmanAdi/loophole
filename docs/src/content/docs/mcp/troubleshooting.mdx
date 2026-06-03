@@ -1,0 +1,59 @@
+---
+title: Troubleshooting
+description: Fixes for tool-not-found, Dev Mode vs packaged, port-in-use, Live not running, and version mismatch.
+---
+
+Each problem below has one cause and one fix. The `/doctor` command in the
+`ableton-live` skill runs these checks for you and prints the failing one.
+
+## The client shows no Loophole tools
+
+The client is not connected to the bridge.
+
+- Confirm Live 12.4.5b Suite is running with the extension installed and active.
+  The bridge only exists while Live is open.
+- Confirm the URL and bearer token in your client config match `bridge.json`
+  exactly (the port can change between runs; see port-in-use below).
+- For Claude Desktop, confirm you fully quit and reopened the app. A window close
+  does not reload the config.
+
+## A tool returns STALE_REFERENCE
+
+The id you passed no longer resolves: a track was deleted, an index shifted, or a
+slot emptied. Re-run `live_get_song_overview` or `live_list_clips` and use the
+fresh id. Path ids are positional by design, so they move when the tree changes;
+the error is the system telling you to re-read, not a bug.
+
+## Dev Mode hot-load vs the packaged extension
+
+Two ways to run the extension behave differently:
+
+- `start:live` hot-loads the bundle into a running Live with Dev Mode enabled
+  (Settings, then enable Dev Mode first). Use it while developing.
+- `package:live` produces the installable `.ablx` you add in Settings, then
+  Extensions. Use it for a stable install.
+
+If a code change does not take effect, you are likely running the packaged
+extension while editing source. Re-package, or switch to the Dev Mode hot-load.
+
+## Port already in use
+
+The bridge probes the range `8420` to `8429` and writes the first free port to
+`bridge.json`. If another app holds a port, it picks the next one, so the port in
+your client config can go stale. Re-read `bridge.json` and update the config (or
+let the skill's `/setup` rewrite it). If every port in the range is taken, free
+one and restart Live.
+
+## Live is not running
+
+The bridge lives inside Live's Extension Host, so there is no server to reach
+when Live is closed. Open Live 12.4.5b Suite with the extension active, then
+reconnect the client.
+
+## Version mismatch
+
+The Extensions SDK is `1.0.0-beta`, and the API has documented gaps. If a tool
+returns `UNSUPPORTED`, the feature is absent in this API version (real-time
+audio, Max for Live, tuning systems, an unknown built-in device name). Do not
+retry a different path; the limit is real. Record the exact Live build number
+when reporting an issue, since beta behavior shifts between builds.

@@ -1,0 +1,78 @@
+name: Deploy docs
+
+# MANUAL ONLY. This workflow is workflow_dispatch, so committing it never
+# publishes anything: it runs only when a maintainer triggers it from the Actions
+# tab. Nothing in this wave is deployed automatically (the launch gate: nothing
+# public ships without explicit approval).
+on:
+  workflow_dispatch:
+
+# Pages deploy needs these scopes; the read-only default elsewhere stays.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; do not cancel a running publish.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Install the monorepo workspace so the docs build can reach the bridge.
+      # --frozen-lockfile + --ignore-scripts match the repo's supply-chain policy.
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # The docs dump-tools script imports `buildServer` from the BUILT mcp
+      # bundle (packages/mcp/dist). That dist does not exist on a clean runner,
+      # so build it before the docs build. `FakeLiveBridge` is imported from core
+      # SOURCE (no build needed).
+      - name: Build the MCP bridge (provides packages/mcp/dist for the tool dump)
+        run: pnpm --filter @othmanadi/ableton-mcp build
+
+      # The docs are a standalone npm project (not a pnpm workspace member), so
+      # install and build them with npm inside docs/. `npm run build` runs the
+      # prebuild dump-tools step first, regenerating tools.json from the server.
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Build docs
+        working-directory: docs
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

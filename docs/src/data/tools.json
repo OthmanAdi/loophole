@@ -1,0 +1,463 @@
+[
+  {
+    "name": "live_create_midi_clip",
+    "title": "Create MIDI clip",
+    "description": "Create an empty MIDI clip in a Session clip slot (given a length in beats, minimum 0.25), ready for live_set_notes. One undo step. The slot id must be an empty slot on a MIDI track (from live_list_clips). Returns the new clip id and slot id.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "slotId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable clip-slot id from live_list_clips, e.g. 'track:2/clipslot:4'"
+        },
+        "lengthBeats": {
+          "type": "number",
+          "minimum": 0.25,
+          "description": "Clip length in beats, minimum 0.25"
+        }
+      },
+      "required": [
+        "slotId",
+        "lengthBeats"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_create_track",
+    "title": "Create track",
+    "description": "Create one empty MIDI or audio track at the end of the track list. One undo step. The track is unnamed; to name it, call live_set_track_props with the returned track id (the SDK cannot create and configure in a single undo step). Returns the new track id, name, and type.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "midi",
+            "audio"
+          ],
+          "description": "Track type to create"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_find_track",
+    "title": "Find track",
+    "description": "Resolve a human track name or substring (case-insensitive) to the stable track ids that match, each with its name and type. Returns count 0 with a hint when nothing matches; that is a valid answer, not an error. Use the returned id with live_list_clips / live_set_track_props.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Track name or substring, case-insensitive"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_get_notes",
+    "title": "Get notes",
+    "description": "Read all MIDI notes from one clip as plain note objects (pitch, startTime, duration, and optional velocity / muted / probability). For a very large clip, returns a summary (count, pitch range, beat span, first notes) plus a hint instead of a full dump. The clip id must be a MIDI clip from live_list_clips.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "clipId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable clip id from live_list_clips, e.g. 'track:2/clipslot:4/clip'"
+        }
+      },
+      "required": [
+        "clipId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_get_song_overview",
+    "title": "Get song overview",
+    "description": "Return one cheap snapshot of the Live Set: tempo, scale, grid, track / scene / cue counts, and the list of tracks (each with a stable id, name, and type). Call this first to orient, then drill down with live_list_clips / live_get_notes. No notes or clip contents are included.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_insert_device",
+    "title": "Insert device",
+    "description": "Insert a built-in Live device (e.g. Reverb, EQ Eight) onto a track at a chain index. One undo step. Built-in devices only; third-party / VST is not supported and an unknown name is rejected. Returns the new device id and its parameter ids, ready for live_set_param.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable track id from live_find_track / overview, e.g. 'track:2'"
+        },
+        "deviceName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Exact built-in Live device name, e.g. 'Reverb'. Built-in devices only; third-party / VST not supported."
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Insert position in the track's device chain"
+        }
+      },
+      "required": [
+        "trackId",
+        "deviceName",
+        "index"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_list_clips",
+    "title": "List clips",
+    "description": "List the clips on one track: Session-view slots (empty slots included, so you can see where to create a clip) and Arrangement clips, each with its stable id, name, and kind (midi / audio / empty). Pass a clip id to live_get_notes / live_set_notes, or a slot id to live_create_midi_clip.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable track id from live_find_track / overview, e.g. 'track:2'"
+        }
+      },
+      "required": [
+        "trackId"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_render_track",
+    "title": "Render track",
+    "description": "Render a track's pre-FX audio over a beat range (startBeat..endBeat) to a WAV file in the temp directory, and return the path. The render is PRE-FX (before the track's device chain) and practical for audio tracks; it is not a post-FX master bounce. This writes a file and does not change the Set, so there is nothing to undo.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable track id from live_find_track / overview, e.g. 'track:2'"
+        },
+        "startBeat": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Position or length in beats"
+        },
+        "endBeat": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Position or length in beats"
+        }
+      },
+      "required": [
+        "trackId",
+        "startBeat",
+        "endBeat"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_set_notes",
+    "title": "Set notes",
+    "description": "Replace ALL MIDI notes in one clip with the given array (whole-array assign-back: read with live_get_notes, transform, write back). One undo step. Pitch and velocity are clamped to 0-127. The clip id must be a MIDI clip. Returns the clip id, name, and resulting note count.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "clipId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable clip id from live_list_clips, e.g. 'track:2/clipslot:4/clip'"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "pitch": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 127,
+                "description": "MIDI pitch 0-127"
+              },
+              "startTime": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Position or length in beats"
+              },
+              "duration": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Position or length in beats"
+              },
+              "velocity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 127,
+                "description": "MIDI velocity 0-127"
+              },
+              "muted": {
+                "type": "boolean"
+              },
+              "probability": {
+                "description": "Playback probability 0-1",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "velocityDeviation": {
+                "description": "Per-note velocity randomization range",
+                "type": "number"
+              },
+              "releaseVelocity": {
+                "description": "Note-off velocity 0-127",
+                "type": "number",
+                "minimum": 0,
+                "maximum": 127
+              },
+              "selected": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "pitch",
+              "startTime",
+              "duration"
+            ],
+            "additionalProperties": false
+          },
+          "description": "Full replacement set of notes for the clip"
+        }
+      },
+      "required": [
+        "clipId",
+        "notes"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_set_param",
+    "title": "Set device parameter",
+    "description": "Set one device parameter to a value (which must fall within the parameter's own min..max). One undo step. Get a parameter id from the ableton://track/{i} resource or from live_insert_device. Returns the parameter name, the value written, and its min / max.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "paramId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable parameter id, e.g. 'track:2/device:1/param:6'"
+        },
+        "value": {
+          "type": "number",
+          "description": "Target value; must fall within the parameter's own min..max"
+        }
+      },
+      "required": [
+        "paramId",
+        "value"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_set_tempo",
+    "title": "Set tempo",
+    "description": "Set the Live Set tempo in beats per minute (20-999). One undo step. Returns the updated song overview.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "bpm": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 999,
+          "description": "Beats per minute, 20-999"
+        }
+      },
+      "required": [
+        "bpm"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
+    "name": "live_set_track_props",
+    "title": "Set track properties",
+    "description": "Set a track's name, mute, solo, and / or arm in ONE undo step. Provide at least one property; only the given keys are written. Returns the post-write track state. Use the track id from live_find_track or live_get_song_overview.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "trackId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable track id from live_find_track / overview, e.g. 'track:2'"
+        },
+        "props": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "description": "New track name",
+              "type": "string",
+              "minLength": 1
+            },
+            "mute": {
+              "type": "boolean"
+            },
+            "solo": {
+              "type": "boolean"
+            },
+            "arm": {
+              "description": "Arm the track for recording",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "trackId",
+        "props"
+      ],
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  }
+]

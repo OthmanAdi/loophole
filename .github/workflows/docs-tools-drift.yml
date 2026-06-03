@@ -1,0 +1,67 @@
+name: Docs tools drift
+
+# The §1.9 drift guard: tools.json is a projection of the running MCP server, so
+# a stale committed copy must fail the build. This is a SEPARATE, docs-scoped
+# workflow (it does not touch the lean main CI). It rebuilds the bridge,
+# regenerates docs/src/data/tools.json, and fails if the committed copy differs.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/scripts/dump-tools.ts'
+      - 'docs/src/data/tools.json'
+      - 'packages/mcp/**'
+      - 'packages/core/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/scripts/dump-tools.ts'
+      - 'docs/src/data/tools.json'
+      - 'packages/mcp/**'
+      - 'packages/core/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-tools-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: tools.json is in sync with the server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # dump-tools imports buildServer from the built mcp bundle, so build it first.
+      - name: Build the MCP bridge
+        run: pnpm --filter @othmanadi/ableton-mcp build
+
+      # Install docs deps and regenerate tools.json from the running server.
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Regenerate tools.json
+        working-directory: docs
+        run: npm run dump-tools
+
+      # Fail if the regenerated file differs from the committed copy.
+      - name: Fail on stale tools.json
+        run: git diff --exit-code docs/src/data/tools.json

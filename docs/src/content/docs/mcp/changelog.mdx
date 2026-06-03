@@ -1,0 +1,30 @@
+---
+title: Changelog
+description: Per-release notes for the Loophole Bridge, with links to the GitHub releases.
+---
+
+This page tracks releases of the Loophole Bridge. The authoritative record is
+the [GitHub releases page](https://github.com/OthmanAdi/loophole/releases); this
+is the human summary. The repository
+[CHANGELOG](https://github.com/OthmanAdi/loophole/blob/main/CHANGELOG.md) follows
+Keep a Changelog and Semantic Versioning.
+
+## Unreleased
+
+Nothing is published yet. There is no npm package and no released `.ablx`. The
+bridge and the extensions are built from source and verified against an
+in-memory model of the Set in CI; in-Live behavior is verified by hand against
+Live 12.4.5b Suite.
+
+When the first release ships, this page will carry its version, date, and a link
+to the GitHub release, and the install pages will gain the one-line install for
+the published artifact.
+
+### Built so far
+
+- The Loophole Bridge MCP server: 12 tools over tracks, clips, notes, devices,
+  the song, and a pre-FX render, plus read-only resources and recipe prompts.
+- The `LiveBridge` port and its in-memory `FakeLiveBridge`, so the same server
+  code runs in CI and in Live.
+- Five extensions in the Loophole Kit: Scale Lock, Humanize, Gain Stage Doctor,
+  Session to Song, and Set Janitor.

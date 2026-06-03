@@ -1,0 +1,36 @@
+---
+title: Batch rename tracks in Ableton with AI
+description: Rename many tracks at once through your assistant, each rename one undo step.
+---
+
+How to batch rename tracks in Ableton with an AI assistant: describe the naming
+you want and have the assistant resolve and rename the tracks, instead of
+double-clicking each name field.
+
+## What it does
+
+The assistant reads the track list, decides the new names from your instruction,
+and sets each track's name. Renaming a track is a `live_set_track_props` write,
+which is one undo step per track.
+
+## The tool calls
+
+1. `live_get_song_overview` (or `live_find_track`) to read the current track
+   names and ids.
+2. The assistant maps old names to new names from your instruction.
+3. `live_set_track_props` per track to set the new name.
+
+## Try it
+
+> Rename every track that starts with "Audio" to "Gtr" plus its number, and
+> rename "1-MIDI" to "Drums".
+
+The assistant resolves each track and renames it. Each rename is independently
+reversible with one undo.
+
+## When to reach for the extension instead
+
+For structural cleanup beyond names (empty tracks, off-palette colors, clips
+that overrun their loop), the [Set Janitor extension](/extensions/set-janitor/)
+sweeps the whole Set and fixes a checklist of issues in one undo. Janitor is the
+hygiene sweep; this recipe is the targeted rename.

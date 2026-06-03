@@ -1,0 +1,104 @@
+---
+title: Quickstart
+description: From a source checkout to a first read-only tool call against a real Live Set.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This is the one happy path: build Loophole from source, install the extension in
+Live, point Claude Code at it, and confirm a read-only tool returns your real
+track names. It is not the full tool reference (that is
+[here](/mcp/tools/)); it is the shortest line to a working setup.
+
+<Aside type="caution" title="Install from source">
+  There is no published npm package and no released `.ablx` yet. Loophole is built from source for
+  now. When a signed release exists, this page will carry the one-line install; until then, the
+  steps below are the real path, and every one of them runs.
+</Aside>
+
+## Prerequisites
+
+- **Ableton Live 12.4.5b Suite** (the beta build that ships the Extensions SDK),
+  with Dev Mode enabled in Settings.
+- **The Extensions SDK and CLI tarballs**, downloaded from your own Ableton Beta
+  Program (Centercode) access. They are not redistributable, so Loophole does
+  not ship them.
+- **Node 24.14.1 or newer** and **pnpm 10**.
+
+## Build and install
+
+<Steps>
+
+1. Clone the monorepo and install its workspace dependencies.
+
+   ```bash
+   git clone https://github.com/OthmanAdi/loophole.git
+   cd loophole
+   pnpm install
+   ```
+
+2. Add your local SDK and CLI tarballs to the extension package. This edits
+   `package.json` and `pnpm-lock.yaml` locally; do not commit those edits (the
+   published tree stays SDK-free).
+
+   ```bash
+   pnpm add file:/abs/path/to/ableton-extensions-sdk-1.0.0-beta.0.tgz --filter @othmanadi/loophole-extension
+   pnpm add -D file:/abs/path/to/ableton-extensions-cli-1.0.0-beta.0.tgz --filter @othmanadi/loophole-extension
+   ```
+
+3. Build the production `.ablx`.
+
+   ```bash
+   pnpm --filter @othmanadi/loophole-extension run package:live
+   ```
+
+4. Install the `.ablx` in Live: Settings, then Extensions, then add the built
+   file. Restart Live.
+
+5. On first start the extension writes a `bridge.json` (the port and a bearer
+   token) into its storage directory. You will read those two values into your
+   client config next.
+
+</Steps>
+
+## Point Claude Code at it
+
+Loophole speaks Streamable HTTP, so the client connects over a local URL with a
+bearer token, not a spawned command. With Live running:
+
+```bash
+claude mcp add --transport http loophole http://127.0.0.1:<port>/mcp
+# then attach the header: Authorization: Bearer <token-from-bridge.json>
+claude mcp list   # loophole should appear
+```
+
+Use the exact `<port>` and `<token>` from `bridge.json`. The
+[Claude Code install page](/mcp/install/claude-code/) has the per-client detail,
+and the [skill](/mcp/install/claude-code/#the-skill-writes-this-for-you) can
+write this config for you with `/setup`.
+
+## Verify it worked
+
+This is the step that tells you the whole chain is live.
+
+<Steps>
+
+1. Confirm **Live 12.4.5b Suite is running** with the Loophole extension
+   installed and active.
+
+2. Confirm `loophole` appears in your client's tool list (`claude mcp list`, or
+   the client's MCP panel).
+
+3. Ask the assistant to call one read-only tool, `live_get_song_overview` or
+   `live_find_track`, and check the result against your project.
+
+   > Run live_get_song_overview and tell me my track names.
+
+   If it comes back with your real track names, tempo, and counts, the bridge is
+   wired correctly. If it does not, see
+   [Troubleshooting](/mcp/troubleshooting/).
+
+</Steps>
+
+From here, the [recipes](/mcp/recipes/humanize-midi/) show the common edits, and
+the [tool reference](/mcp/tools/) is the exhaustive surface.

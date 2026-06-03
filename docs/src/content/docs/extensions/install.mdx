@@ -1,0 +1,73 @@
+---
+title: Install a .ablx
+description: Build the Loophole Kit extensions from source and install them in Live, then verify.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+The Loophole Kit is five Ableton extensions. Each is a right-click action inside
+Live. They share the same core as the bridge, and each writes its edit in one
+undo step.
+
+<Aside type="caution" title="Install from source">
+  There is no released `.ablx` yet. The extensions are built from source, the same way the bridge
+  is. When a signed release exists, this page will link to the download; until then, the build steps
+  below are the real path.
+</Aside>
+
+## Prerequisites
+
+- **Ableton Live 12.4.5b Suite**, with Dev Mode enabled in Settings.
+- **The Extensions SDK and CLI tarballs** from your own Ableton Beta Program
+  access. They are not redistributable, so Loophole does not ship them.
+- **Node 24.14.1 or newer** and **pnpm 10**.
+
+## Build and install
+
+<Steps>
+
+1. Clone and install the workspace.
+
+   ```bash
+   git clone https://github.com/OthmanAdi/loophole.git
+   cd loophole
+   pnpm install
+   ```
+
+2. Add your local SDK and CLI tarballs (do not commit the resulting manifest or
+   lockfile changes).
+
+   ```bash
+   pnpm add file:/abs/path/to/ableton-extensions-sdk-1.0.0-beta.0.tgz --filter @othmanadi/loophole-extension
+   pnpm add -D file:/abs/path/to/ableton-extensions-cli-1.0.0-beta.0.tgz --filter @othmanadi/loophole-extension
+   ```
+
+3. Package the production `.ablx`.
+
+   ```bash
+   pnpm --filter @othmanadi/loophole-extension run package:live
+   ```
+
+4. In Live, open Settings, then Extensions, add the built `.ablx`, and restart
+   Live.
+
+</Steps>
+
+The same install carries all five extensions and the bridge, because they ship in
+one extension. Each appears as its own right-click action.
+
+## Verify it worked
+
+<Steps>
+
+1. Live 12.4.5b Suite is running with the extension installed and active.
+2. Right-click a MIDI clip. You should see "Lock to Scale…" and "Humanize…" in
+   the menu.
+3. Run one of them on a clip and confirm the edit, then press undo once to
+   confirm the whole edit reverts in a single step.
+
+</Steps>
+
+If the menu actions appear and one undo reverts an edit, the install is good. If
+the actions are missing, confirm Dev Mode and the install, then see
+[Troubleshooting](/mcp/troubleshooting/).

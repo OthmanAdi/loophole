@@ -1,0 +1,37 @@
+---
+title: Humanize
+description: Nudge stiff MIDI off the grid with controlled randomness, in one undo step.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Humanize takes stiff programmed MIDI off the grid: it nudges note timing,
+velocity, and optionally length by controlled random amounts, scaled to the grid
+you have set in Live so the nudge stays musically sane. It reuses Scale Lock's
+note loop; the difference is the per-note transform.
+
+## What it does
+
+It reads a clip's notes, jitters them within grid-scaled bounds, and writes them
+back. A strength slider sets how far, a swing slider shifts off-beats, and a
+"living pattern" option also writes note probability and velocity deviation. The
+edit is one undo.
+
+## Right-click path
+
+Right-click a MIDI clip (or a clip slot selection), then **Humanize…**. A dialog
+gives a Strength slider, checkboxes for Timing, Velocity, and Duration, an
+optional Swing slider, and a living-pattern checkbox. Press Apply.
+
+<Aside type="note" title="Screenshot">
+  A screenshot of the dialog and an audible before-and-after go here once captured in Live 12.4.5b
+  Suite.
+</Aside>
+
+## Honest beta limit
+
+Humanize nudges note timing, velocity, and length by small random amounts, scaled
+to the grid you have set in Live. The result is random within those bounds: run
+it twice and you get two different feels (that is the point). It edits MIDI notes
+only and cannot touch audio, automation, or MIDI CC, because the beta exposes
+none of those. User-invoked only.
