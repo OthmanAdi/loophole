@@ -7,7 +7,7 @@
   <a href="../../LICENSE"><img src="https://img.shields.io/github/license/OthmanAdi/loophole?label=license&color=3c873a" alt="MIT license" /></a>
   <a href="package.json"><img src="https://img.shields.io/badge/node-22%20%7C%2024-3c873a?logo=nodedotjs&logoColor=white" alt="Runs on Node 22 and 24" /></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-spec_2025--11--25-1f6feb" alt="Built on the Model Context Protocol, spec revision 2025-11-25" /></a>
-  <a href="../../README.md#build-wave-roadmap"><img src="https://img.shields.io/badge/status-building%20in%20the%20open-3c873a" alt="Status: building in the open" /></a>
+  <a href="https://github.com/OthmanAdi/loophole/commits/main"><img src="https://img.shields.io/badge/status-building%20in%20the%20open-3c873a" alt="Status: building in the open" /></a>
 </p>
 
 # Loophole Kit (`@othmanadi/loophole-extension`)
