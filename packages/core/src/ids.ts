@@ -233,7 +233,7 @@ export function leafKind(id: PathId): SegmentKind {
   return leafSegment(id).kind;
 }
 
-// --- typed builders for the kinds the W0 port actually uses ---
+// --- typed builders for the kinds the port actually uses ---
 
 /** Build a track id, e.g. `track:2`. */
 export function trackId(index: number): TrackId {

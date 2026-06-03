@@ -2,9 +2,9 @@
  * Typed error model for the bridge.
  *
  * Every failure the bridge raises is a {@link BridgeError} carrying a stable
- * {@link BridgeErrorCode} and a recovery hint. The tool layer (wave W4) maps these
- * to MCP `{ isError: true }` results with the hint inlined, so the model can
- * self-correct in one turn rather than seeing an opaque stack trace.
+ * {@link BridgeErrorCode} and a recovery hint. The tool layer (the Loophole Bridge)
+ * maps these to MCP `{ isError: true }` results with the hint inlined, so the model
+ * can self-correct in one turn rather than seeing an opaque stack trace.
  *
  * The codes mirror the predictable SDK failure modes called out in API_REFERENCE.md
  * (a handle throws if its object was deleted or is the wrong type) plus the input /

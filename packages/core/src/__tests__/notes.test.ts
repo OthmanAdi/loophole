@@ -4,8 +4,18 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { NoteDTO } from '../../bridge/dtos.js';
-import { clampPitch, humanizeTiming, MAX_PITCH, MIN_PITCH, transposeNotes } from '../notes.js';
+import type { NoteDTO } from '../dtos.js';
+import {
+  clampPitch,
+  clampVelocity,
+  humanizeTiming,
+  mapClipNotes,
+  MAX_PITCH,
+  MAX_VELOCITY,
+  MIN_PITCH,
+  MIN_VELOCITY,
+  transposeNotes,
+} from '../transforms/notes.js';
 
 describe('clampPitch', () => {
   it('clamps below 0 and above 127', () => {
@@ -20,6 +30,45 @@ describe('clampPitch', () => {
 
   it('passes valid pitches through', () => {
     expect(clampPitch(64)).toBe(64);
+  });
+});
+
+describe('clampVelocity', () => {
+  it('clamps below 0 and above 127', () => {
+    expect(clampVelocity(-1)).toBe(MIN_VELOCITY);
+    expect(clampVelocity(200)).toBe(MAX_VELOCITY);
+  });
+
+  it('passes valid velocities through without rounding', () => {
+    expect(clampVelocity(100)).toBe(100);
+    expect(clampVelocity(63.5)).toBe(63.5);
+  });
+});
+
+describe('mapClipNotes', () => {
+  const input: readonly NoteDTO[] = [
+    { pitch: 60, startTime: 0, duration: 1, velocity: 100 },
+    { pitch: 62, startTime: 1, duration: 1 },
+  ];
+
+  it('returns a fresh array and never mutates the input', () => {
+    const out = mapClipNotes(input, (n) => ({ ...n, pitch: n.pitch + 1 }));
+    expect(out).not.toBe(input);
+    expect(out[0]?.pitch).toBe(61);
+    expect(out[1]?.pitch).toBe(63);
+    // Input untouched.
+    expect(input[0]?.pitch).toBe(60);
+  });
+
+  it('passes the index to the mapper', () => {
+    const out = mapClipNotes(input, (_n, i) => ({ pitch: i, startTime: 0, duration: 1 }));
+    expect(out.map((n) => n.pitch)).toEqual([0, 1]);
+  });
+
+  it('always returns a new array even when the mapper returns the same object', () => {
+    const out = mapClipNotes(input, (n) => n);
+    expect(out).not.toBe(input);
+    expect(out.length).toBe(2);
   });
 });
 

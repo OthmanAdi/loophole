@@ -39,6 +39,8 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.19.19)
 
+  packages/core: {}
+
   packages/extension: {}
 
   packages/mcp:
@@ -46,6 +48,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
+      '@othmanadi/loophole-core':
+        specifier: workspace:*
+        version: link:../core
       pino:
         specifier: ^9.14.0
         version: 9.14.0
