@@ -1,13 +1,25 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "comment": "CI-safe config. EXCLUDES every file that imports @ableton-extensions/sdk by NAME so `tsc --noEmit` passes with NO SDK present (the beta SDK is non-redistributable and never committed; see ARCHITECTURE_DECISIONS.md §1/§4). That set is: the four SDK-touching adapter files (live-bridge.ableton, resolver, mappers, selection), the five context-menu command modules (each imports SDK types), and extension.ts (activate()). The SDK-FREE files stay in the CI typecheck (and so are still gate-covered): adapter/bootstrap.ts and adapter/write-queue.ts (node:/core only), commands/support.ts (core only), and webviews/** (the *.html text imports resolve to `string` via the ambient webviews/html.d.ts, no SDK). All the excluded SDK-facing code is typechecked LOCALLY against the real extracted types via tsconfig.live.json (gitignored). Keeping the SDK-free files included also means `tsc` always has inputs here, so the gate never trips TS18003 'no inputs'.",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "rootDir": "./src",
-    "outDir": "./dist",
-    "noEmit": false,
-    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+    "rootDir": "./src"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "src/adapter/live-bridge.ableton.ts",
+    "src/adapter/resolver.ts",
+    "src/adapter/mappers.ts",
+    "src/adapter/selection.ts",
+    "src/commands/scale-lock.command.ts",
+    "src/commands/humanize.command.ts",
+    "src/commands/gain-stage-doctor.command.ts",
+    "src/commands/session-to-song.command.ts",
+    "src/commands/set-janitor.command.ts",
+    "src/extension.ts"
+  ]
 }

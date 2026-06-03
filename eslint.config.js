@@ -14,6 +14,21 @@ export default tseslint.config(
       '**/*.config.js',
       '**/*.config.ts',
       '**/*.config.mjs',
+      // Local-only esbuild bundler for the .ablx (not in any CI tsconfig, runs via tsx
+      // with the SDK installed locally; see ARCHITECTURE_DECISIONS §6). Same class as
+      // the *.config.ts files above: tooling, not shipped, not type-checked in CI.
+      '**/build.ts',
+      // The SDK-facing code is the ONLY code that imports @ableton-extensions/sdk
+      // (the non-redistributable beta): the adapter, the five context-menu command
+      // modules, and the activate() bootstrap. It is excluded from the committed CI
+      // tsconfig so `tsc --noEmit` passes with NO SDK present (ARCHITECTURE_DECISIONS.md
+      // §1/§4), which means the type-aware ESLint project service cannot resolve these
+      // files either. Ignore them here so the committed `eslint .` stays green SDK-free;
+      // they are typechecked locally against the real types via tsconfig.live.json. The
+      // SDK-free extension files (commands/support.ts, webviews/**) stay linted.
+      'packages/extension/src/adapter/**',
+      'packages/extension/src/commands/*.command.ts',
+      'packages/extension/src/extension.ts',
     ],
   },
   js.configs.recommended,
@@ -60,6 +75,16 @@ export default tseslint.config(
         project: ['packages/mcp/tsconfig.eslint.json'],
         tsconfigRootDir: import.meta.dirname,
       },
+    },
+  },
+  {
+    // The extension shell (the SDK-free, still-linted parts) logs to stderr via
+    // `console.error`; the Extension Host tees fd 2 to `ExtensionHost.txt` and there is
+    // no pino in the .ablx bundle, so console IS the logging channel here (unlike the
+    // mcp package, where stdout is the JSON-RPC wire). Allow it for these files.
+    files: ['packages/extension/src/**/*.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
   {

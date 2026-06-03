@@ -32,6 +32,11 @@ bridge.json
 # Contributors fetch their own from the Ableton Beta Program (Centercode).
 packages/extension/vendor/*.tgz
 
+# Local-only SDK typecheck config: maps @ableton-extensions/sdk to a contributor's
+# own extracted .d.mts (an absolute machine path) so the adapter typechecks against
+# the real beta types. Never committed (keeps the tree SDK-free + path-portable).
+packages/extension/tsconfig.live.json
+
 # Packaged extension build artifacts (shipped via GitHub Releases, not the tree)
 *.ablx
 

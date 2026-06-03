@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "comment": "TEMPLATE for the gitignored tsconfig.live.json (ARCHITECTURE_DECISIONS.md §4). Copy this to tsconfig.live.json and set the one `paths` entry to YOUR machine's extracted Ableton Extensions SDK v1.0.0-beta.0 declarations (the `index.d.mts` inside the SDK .tgz you downloaded from the Ableton Beta Program). That lets the SDK-facing code (src/adapter/**, src/commands/*.command.ts, src/extension.ts) typecheck against the REAL types WITHOUT installing or committing the non-redistributable SDK. The committed CI tsconfig.json EXCLUDES those same files, so `pnpm -r typecheck` passes with NO SDK present. The *.html text imports resolve to `string` via the ambient src/webviews/html.d.ts. Run: `npx tsc -p packages/extension/tsconfig.live.json --noEmit` (must pass). NEVER commit tsconfig.live.json or the .d.mts it points at.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@ableton-extensions/sdk": [
+        "/absolute/path/to/extensions-sdk-1.0.0-beta.0/_extracted/package/dist/index.d.mts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/*.spec.ts"]
+}

@@ -1,7 +1,7 @@
 {
   "name": "@othmanadi/loophole-extension",
   "version": "0.0.0",
-  "description": "Loophole Kit: the Ableton extension shell that hosts the Loophole Bridge. Placeholder, wired in wave W1.",
+  "description": "Loophole Kit: the Ableton extension shell (.ablx) that starts the Loophole Bridge and registers all five context-menu extensions. SDK-facing and private; built locally against the licensee's own Ableton Extensions SDK.",
   "license": "MIT",
   "author": "Ahmad Othman Ammar Adi (CodingWithAdi)",
   "type": "module",
@@ -9,10 +9,25 @@
   "engines": {
     "node": ">=24.14.1"
   },
+  "comment:scripts": "typecheck/lint/test/build are the CI-safe gates: they run with NO Ableton SDK present (the beta SDK is non-redistributable, never committed; ARCHITECTURE_DECISIONS.md §1/§3). The CI tsconfig + eslint config exclude every SDK-importing file, and `build` is a deliberate no-op placeholder so `pnpm -r build` stays green SDK-free. The `*:live` scripts are LOCAL-ONLY: they require the licensee to install the SDK + CLI tarballs first (`pnpm add file:<sdk>.tgz` and the cli .tgz; see README), and to copy tsconfig.live.example.json to the gitignored tsconfig.live.json. None of those local changes are committed.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --passWithNoTests",
-    "build": "node -e \"console.log('loophole-extension: build wired in wave W1')\""
+    "build": "node -e \"console.log('loophole-extension: CI build is a no-op placeholder; the real .ablx bundle is the local-only build:live / package:live scripts')\"",
+    "build:live": "tsc -p tsconfig.live.json --noEmit && tsx build.ts",
+    "start:live": "tsx build.ts && extensions-cli run",
+    "package:live": "tsx build.ts --production && extensions-cli package"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@othmanadi/ableton-mcp": "workspace:*",
+    "@othmanadi/loophole-core": "workspace:*",
+    "audio-decode": "^2.2.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3"
   }
 }
