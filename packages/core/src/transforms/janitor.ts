@@ -1,15 +1,14 @@
 /**
- * Pure Set-hygiene transforms for Set Janitor (W6), 03_EXTENSIONS_SPEC §5.
+ * Pure Set-hygiene transforms for Set Janitor.
  *
  * Two functions, no I/O, no SDK, no bridge:
  *  - {@link detectIssues} sweeps a plain {@link SetDTO} and flags every mess it finds
- *    (empty tracks, placeholder names, off-palette clip colors, loop overruns), and
- *  - {@link planFixes} turns the issues the user CHOSE into the concrete {@link Fix}
- *    list the handler applies in one transaction.
+ *    (empty tracks, placeholder names, optionally verified colors, loop overruns), and
+ *  - {@link planFixes} turns the issues the user chose into concrete {@link Fix}es.
  *
  * Both are deterministic and never mutate their inputs. The handler
  * (`handlers/set-janitor.ts`) builds the {@link SetDTO} from the bridge, calls these,
- * and writes the fixes back; rings 1 keeps the rule logic here, Live-free.
+ * and writes the fixes back.
  *
  * Detected issue id scheme (stable, derived from kind + target so a UI can round-trip
  * a selection without a side table): `"<kind>:<opaque-reference>"`. Target type and
@@ -20,19 +19,11 @@ import type { Fix, Issue, IssueId, IssueKind, SetClipDTO, SetDTO, SetTrackDTO } 
 import type { ClipId, TrackId } from '../ids.js';
 
 /**
- * The default Live clip-color palette the off-palette rule checks against.
+ * A small legacy/reference color set retained for callers that explicitly choose it.
  *
- * Live ships a fixed palette of clip/track colors; a clip whose color is not one of
- * these reads as a hand-tweaked or imported odd-one-out (03_EXTENSIONS_SPEC §5(a):
- * "inconsistent clip colors"). This set is intentionally a small, well-known slice
- * (the neutral/default plus the primary swatches the fixtures use), NOT Live's full
- * 70-entry palette, which is not exposed through the SDK. The real palette is a
- * presentation concern, so {@link detectIssues} takes the palette as an optional
- * argument: the SDK-facing adapter (or the UI) can pass Live's fuller palette, while
- * tests and the default path use this set.
- *
- * `0` is Live's "no explicit color" / default value and is always considered on
- * palette (an uncolored clip is not "off palette").
+ * This seven-color list is not an authoritative representation of Live's complete
+ * palette and is never used implicitly. A caller may pass it, or another verified
+ * allowed-color set, explicitly to {@link detectIssues} and {@link planFixes}.
  */
 export const DEFAULT_CLIP_PALETTE: ReadonlySet<number> = new Set<number>([
   0, // default / uncolored
@@ -49,7 +40,7 @@ export const DEFAULT_CLIP_PALETTE: ReadonlySet<number> = new Set<number>([
  * `MIDI` / `Audio`, an indexed `MIDI 2` / `Audio 3`, or the `1-MIDI` / `2-Audio`
  * track-default style, optionally combined (`1-Audio 4`). Anchored, case-sensitive
  * (Live's defaults are capitalised exactly so), so a real name like `Bass`,
- * `Bassline`, `Keys`, or `Loop` does NOT match. 03_EXTENSIONS_SPEC §5(a)/§5(f).
+ * `Bassline`, `Keys`, or `Loop` does NOT match.
  */
 const PLACEHOLDER_NAME = /^(\d+-)?(MIDI|Audio)( \d+)?$/;
 
@@ -85,17 +76,16 @@ function isLoopOverrun(clip: SetClipDTO): boolean {
  *  - **emptyTrack** — a track with no clips and no devices ({@link isEmptyTrack}).
  *  - **placeholderName** — a track or clip whose name is a Live default-style
  *    placeholder ({@link PLACEHOLDER_NAME}).
- *  - **offPaletteColor** — a clip whose `color` is not in `palette`.
+ *  - **offPaletteColor** — only when an explicit verified palette is supplied, a
+ *    clip whose `color` is absent from that palette.
  *  - **loopOverrun** — a looping clip whose `endMarker > loopEnd` ({@link isLoopOverrun}).
  *
  * @param set the whole Set as plain data.
- * @param palette the set of on-palette color values; defaults to
- *   {@link DEFAULT_CLIP_PALETTE}. The adapter/UI may pass Live's fuller palette.
+ * @param allowedClipColors a caller-verified allowed-color set. Omit it to disable
+ *   color diagnosis entirely, which is the safe default when Live's full palette is
+ *   unavailable.
  */
-export function detectIssues(
-  set: SetDTO,
-  palette: ReadonlySet<number> = DEFAULT_CLIP_PALETTE,
-): Issue[] {
+export function detectIssues(set: SetDTO, allowedClipColors?: ReadonlySet<number>): Issue[] {
   const issues: Issue[] = [];
 
   for (const [trackIndex, track] of set.tracks.entries()) {
@@ -132,7 +122,11 @@ export function detectIssues(
         });
       }
 
-      if (!palette.has(clip.color)) {
+      if (
+        allowedClipColors !== undefined &&
+        allowedClipColors.size > 0 &&
+        !allowedClipColors.has(clip.color)
+      ) {
         issues.push({
           id: issueId('offPaletteColor', clip.id),
           kind: 'offPaletteColor',
@@ -165,12 +159,10 @@ export function detectIssues(
  *  - `placeholderName` → `rename`,
  *  - `offPaletteColor` → `recolor`,
  *  - `emptyTrack` → `deleteTrack`,
- *  - `loopOverrun` → `null`. The SDK exposes no `loopEnd` / `endMarker` setter on an
- *    existing clip (01_SDK_MAP §2: those are read-only getters, no setters in
- *    v1.0.0), so a loop overrun cannot be trimmed; it is surfaced for the user to
- *    fix by hand and yields no automatic {@link Fix}. (`deleteClip` is reserved for a
- *    future "the clip is junk, remove it" choice and is not auto-derived from a
- *    detected issue here.)
+ *  - `loopOverrun` → `null`. The host exposes no writable loop-end/content-end
+ *    operation for an existing clip, so a loop overrun cannot be trimmed. It is
+ *    surfaced for the user to fix by hand and yields no automatic {@link Fix}.
+ *    (`deleteClip` is reserved for a future explicit removal choice.)
  */
 function fixKindForIssue(kind: IssueKind): Fix['kind'] | null {
   switch (kind) {
@@ -186,17 +178,18 @@ function fixKindForIssue(kind: IssueKind): Fix['kind'] | null {
 }
 
 /**
- * The on-palette color a recolor steers an off-palette clip toward: the first
- * non-default entry of the palette (a stable, deterministic pick). Falls back to `0`
- * (Live's default) for an empty / default-only palette.
+ * Pick a deterministic color from an explicitly supplied verified palette. Prefer a
+ * non-zero color, then verified zero. Missing or empty palettes yield no target so a
+ * recolor can never be invented from incomplete knowledge.
  */
-function paletteTargetColor(palette: ReadonlySet<number>): number {
-  for (const color of palette) {
+function paletteTargetColor(allowedClipColors?: ReadonlySet<number>): number | null {
+  if (allowedClipColors === undefined) return null;
+  for (const color of allowedClipColors) {
     if (color !== 0) {
       return color;
     }
   }
-  return 0;
+  return allowedClipColors.has(0) ? 0 : null;
 }
 
 /**
@@ -206,20 +199,20 @@ function paletteTargetColor(palette: ReadonlySet<number>): number {
  * chosen `loopOverrun` is intentionally dropped (it has no auto-fix). Destructive
  * fixes (`deleteTrack` / `deleteClip`) carry no `value` and are thereby marked
  * distinctly from the value-carrying `rename` / `recolor` fixes, so the handler (and
- * a UI) can treat them with the off-by-default caution 03_EXTENSIONS_SPEC §5(c) asks
- * for. Output order follows the input `issues` order (which is the detect order).
+ * a UI) can treat them with extra caution. Output order follows the input `issues`
+ * order (which is the detect order).
  *
  * Pure: reads its inputs and returns a fresh array; never mutates them.
  *
  * @param issues the full issue list from {@link detectIssues}.
  * @param chosenIds the ids of the issues the user ticked to fix.
- * @param palette the palette a `recolor` steers toward; defaults to
- *   {@link DEFAULT_CLIP_PALETTE} (matching the {@link detectIssues} default).
+ * @param allowedClipColors the same caller-verified palette used for detection.
+ *   Without it, selected color issues intentionally produce no recolor fix.
  */
 export function planFixes(
   issues: readonly Issue[],
   chosenIds: readonly string[],
-  palette: ReadonlySet<number> = DEFAULT_CLIP_PALETTE,
+  allowedClipColors?: ReadonlySet<number>,
 ): Fix[] {
   const chosen = new Set(chosenIds);
   const fixes: Fix[] = [];
@@ -241,14 +234,19 @@ export function planFixes(
           name: issue.suggestedName ?? (issue.targetKind === 'track' ? 'Track' : 'Clip'),
         });
         break;
-      case 'recolor':
+      case 'recolor': {
+        const color = paletteTargetColor(allowedClipColors);
+        if (color === null) {
+          break;
+        }
         fixes.push({
           kind,
           target: issue.target,
           targetKind: issue.targetKind,
-          color: paletteTargetColor(palette),
+          color,
         });
         break;
+      }
       case 'deleteTrack':
       case 'deleteClip':
         // Destructive: no value. The absent name/color is what marks a delete fix

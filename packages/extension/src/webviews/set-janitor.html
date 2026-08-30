@@ -1,12 +1,12 @@
 <!doctype html>
 <html lang="en">
   <!--
-    Set Janitor checklist modal (W6), 03_EXTENSIONS_SPEC §5(c).
+    Set Janitor checklist modal.
 
     A grouped checklist of detected issues. Each issue has a checkbox; destructive
     fixes (delete track/clip, i.e. the `emptyTrack` kind) are visually flagged and
-    DEFAULT UNCHECKED (the off-by-default caution §5(c) requires). Non-destructive
-    issues (placeholder names, off-palette colors) default checked. Fix returns
+    DEFAULT UNCHECKED. Non-destructive issues default checked. Color issues can only
+    be supplied after the caller provides a verified allowed palette. Fix returns
     `{ chosenIssueIds }` via `close_and_send`; Cancel returns `{ chosenIssueIds: null }`.
     The host injects the issues by replacing `/*__LOOPHOLE_DATA__*/{}` with
     `{ issues: [{ id, kind, detail }] }` (ids are the stable detectIssues ids, so they
@@ -163,6 +163,10 @@
       .summary {
         color: var(--c-text-secondary);
       }
+      .undo-note {
+        color: var(--c-text-secondary);
+        line-height: 1.35;
+      }
       .list-wrap {
         flex: 1;
         overflow: auto;
@@ -227,6 +231,10 @@
   <body>
     <div class="title">Clean Up Set</div>
     <div id="summary" class="summary">issues found</div>
+    <div class="undo-note">
+      Selected name and verified color changes share one undo entry when present. Each deletion
+      creates its own undo entry.
+    </div>
     <div class="list-wrap">
       <div id="groups"></div>
     </div>

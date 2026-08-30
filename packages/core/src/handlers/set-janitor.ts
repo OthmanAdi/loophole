@@ -19,6 +19,11 @@ import { detectIssues, planFixes } from '../transforms/janitor.js';
 export interface SetJanitorArgs {
   /** The {@link import('../dtos.js').IssueId}s the user chose to fix. */
   readonly chosenIssueIds: readonly string[];
+  /**
+   * Caller-verified complete allowed-color set. Omit it to disable color diagnosis
+   * and recoloring; the core does not assume its small reference list is complete.
+   */
+  readonly allowedClipColors?: ReadonlySet<number>;
 }
 
 /** Result of {@link runSetJanitor}: how many fixes were applied in the sweep. */
@@ -180,8 +185,8 @@ export async function runSetJanitor(
 ): Promise<SetJanitorResult> {
   const set = readSet(bridge);
   const ordinals = snapshotOrdinals(set);
-  const issues = detectIssues(set);
-  const fixes = planFixes(issues, args.chosenIssueIds);
+  const issues = detectIssues(set, args.allowedClipColors);
+  const fixes = planFixes(issues, args.chosenIssueIds, args.allowedClipColors);
 
   if (fixes.length === 0) {
     // No chosen fix: do not open an (empty) transaction / undo step.

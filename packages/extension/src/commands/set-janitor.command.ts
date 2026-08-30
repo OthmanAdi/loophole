@@ -1,10 +1,11 @@
 /**
- * Set Janitor (W6) context-menu command, 03_EXTENSIONS_SPEC §5(c).
+ * Set Janitor context-menu command.
  *
  * Registers `"Clean Up Set…"` on the `"Scene"` scope, reads the whole Set, runs the
  * pure-core {@link detectIssues} to build the checklist (destructive deletes off by
  * default), shows the grouped checklist modal, parses `{ chosenIssueIds }`, and calls
- * the pure-core {@link runSetJanitor} with the chosen ids. The whole sweep is one undo.
+ * the pure-core {@link runSetJanitor} with the chosen ids. Value changes share one
+ * undo entry when present; every structural deletion creates its own undo entry.
  *
  * Why a preview read here: the checklist must list the issues BEFORE the user picks,
  * but {@link runSetJanitor} re-detects internally and applies by chosen issue id. The
@@ -15,10 +16,6 @@
  * checklist, and forwards the chosen ids; it does not re-implement the fix logic.
  *
  * SDK-facing; CI-excluded; typechecked locally via `tsconfig.live.json`.
- *
- * RING-3 PENDING: the destructive deletes reverting in one undo, and the whole sweep
- * being one undo, are confirmed only in real Live. Detection + fix planning are the
- * ring-1/ring-2 code.
  */
 
 import type { ExtensionContext } from '@ableton-extensions/sdk';
@@ -73,6 +70,8 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
  * {@link runSetJanitor} (which re-detects and matches by the same stable ids).
  */
 async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<void> {
+  // No complete verified Live palette is available here, so color diagnosis stays
+  // disabled. Supplying the core's small reference list would create false positives.
   const issues = detectIssues(readSet(bridge));
   const rows: IssueRow[] = issues.map(toIssueRow);
 

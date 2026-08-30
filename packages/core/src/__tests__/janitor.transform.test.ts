@@ -9,7 +9,9 @@ import { describe, expect, it } from 'vitest';
 import type { SetClipDTO, SetDTO, SetTrackDTO } from '../dtos.js';
 import type { ClipId, TrackId } from '../ids.js';
 import { makeSessionReference } from '../references.js';
-import { DEFAULT_CLIP_PALETTE, detectIssues, planFixes } from '../transforms/janitor.js';
+import { detectIssues, planFixes } from '../transforms/janitor.js';
+
+const VERIFIED_TEST_PALETTE: ReadonlySet<number> = new Set([0, 255]);
 
 // Logical fixture keys are mapped to opaque tokens that do not encode positions.
 // Pure transform tests need stable equality, not a bridge registry, so this small
@@ -46,7 +48,7 @@ function sessionClipId(trackKey: number, clipKey: number): ClipId {
 function clip(overrides: Partial<SetClipDTO> & Pick<SetClipDTO, 'id'>): SetClipDTO {
   return {
     name: 'Real Clip Name',
-    color: 255, // on-palette by default
+    color: 255,
     looping: true,
     loopStart: 0,
     loopEnd: 4,
@@ -169,18 +171,40 @@ describe('detectIssues: loop overrun', () => {
 });
 
 describe('detectIssues: off-palette color', () => {
-  it('flags a clip whose color is not in the palette', () => {
+  it('does not diagnose an unknown color when no verified palette is supplied', () => {
     const t = track({
       id: trackId(0),
       clips: [clip({ id: sessionClipId(0, 0), name: 'Odd', color: 12345 })],
     });
-    const offPalette = detectIssues(set([t])).filter((i) => i.kind === 'offPaletteColor');
+
+    expect(detectIssues(set([t])).some((i) => i.kind === 'offPaletteColor')).toBe(false);
+  });
+
+  it('treats an empty allowed-color set like no verified palette', () => {
+    const t = track({
+      id: trackId(0),
+      clips: [clip({ id: sessionClipId(0, 0), name: 'Odd', color: 12345 })],
+    });
+
+    expect(detectIssues(set([t]), new Set()).filter((i) => i.kind === 'offPaletteColor')).toEqual(
+      [],
+    );
+  });
+
+  it('flags a color excluded by an explicitly supplied verified palette', () => {
+    const t = track({
+      id: trackId(0),
+      clips: [clip({ id: sessionClipId(0, 0), name: 'Odd', color: 12345 })],
+    });
+    const offPalette = detectIssues(set([t]), VERIFIED_TEST_PALETTE).filter(
+      (i) => i.kind === 'offPaletteColor',
+    );
     expect(offPalette).toHaveLength(1);
     expect(offPalette[0]?.target).toBe(sessionClipId(0, 0));
     expect(offPalette[0]?.targetKind).toBe('clip');
   });
 
-  it('does NOT flag a clip whose color is on the palette (incl. 0 = default)', () => {
+  it('does not flag a clip whose color is in the verified palette, including zero', () => {
     const t = track({
       id: trackId(0),
       clips: [
@@ -188,7 +212,9 @@ describe('detectIssues: off-palette color', () => {
         clip({ id: sessionClipId(0, 1), color: 0 }),
       ],
     });
-    expect(detectIssues(set([t])).some((i) => i.kind === 'offPaletteColor')).toBe(false);
+    expect(
+      detectIssues(set([t]), VERIFIED_TEST_PALETTE).some((i) => i.kind === 'offPaletteColor'),
+    ).toBe(false);
   });
 
   it('honors a caller-supplied palette', () => {
@@ -196,7 +222,7 @@ describe('detectIssues: off-palette color', () => {
       id: trackId(0),
       clips: [clip({ id: sessionClipId(0, 0), color: 999 })],
     });
-    // 999 is off the default palette but on this custom one: no issue.
+    // A caller that has verified 999 as allowed must not receive a false diagnosis.
     expect(detectIssues(set([t]), new Set([999])).some((i) => i.kind === 'offPaletteColor')).toBe(
       false,
     );
@@ -211,7 +237,7 @@ describe('detectIssues: a clip can trip several rules at once', () => {
         clip({ id: sessionClipId(0, 0), name: 'Audio 3', color: 12345, loopEnd: 4, endMarker: 6 }),
       ],
     });
-    const kinds = detectIssues(set([t])).map((i) => i.kind);
+    const kinds = detectIssues(set([t]), VERIFIED_TEST_PALETTE).map((i) => i.kind);
     expect(kinds).toContain('placeholderName');
     expect(kinds).toContain('offPaletteColor');
     expect(kinds).toContain('loopOverrun');
@@ -222,7 +248,7 @@ describe('detectIssues: a clip can trip several rules at once', () => {
       id: trackId(0),
       clips: [clip({ id: sessionClipId(0, 0), name: 'Audio 3', color: 12345 })],
     });
-    const ids = detectIssues(set([t])).map((i) => i.id);
+    const ids = detectIssues(set([t]), VERIFIED_TEST_PALETTE).map((i) => i.id);
     expect(new Set(ids).size).toBe(ids.length); // all distinct
     expect(ids).toContain(`offPaletteColor:${sessionClipId(0, 0)}`);
     expect(ids).toContain(`placeholderName:${sessionClipId(0, 0)}`);
@@ -245,7 +271,7 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
     }),
     track({ id: trackId(2), name: 'Empty', deviceCount: 0, clips: [] }),
   ]);
-  const issues = detectIssues(messy);
+  const issues = detectIssues(messy, VERIFIED_TEST_PALETTE);
 
   it('returns no fixes when nothing is chosen', () => {
     expect(planFixes(issues, [])).toEqual([]);
@@ -257,7 +283,7 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
     expect(rename).toBeDefined();
     expect(recolor).toBeDefined();
 
-    const fixes = planFixes(issues, [rename!.id, recolor!.id]);
+    const fixes = planFixes(issues, [rename!.id, recolor!.id], VERIFIED_TEST_PALETTE);
     expect(fixes).toHaveLength(2);
     expect(fixes.map((f) => f.kind).sort()).toEqual(['recolor', 'rename']);
   });
@@ -278,7 +304,7 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
   it('rename carries an ordinal-derived, non-placeholder name; recolor an on-palette color', () => {
     const rename = issues.find((i) => i.kind === 'placeholderName' && i.target === trackId(1))!;
     const recolor = issues.find((i) => i.kind === 'offPaletteColor')!;
-    const fixes = planFixes(issues, [rename.id, recolor.id]);
+    const fixes = planFixes(issues, [rename.id, recolor.id], VERIFIED_TEST_PALETTE);
 
     const renameFix = fixes.find((f) => f.kind === 'rename');
     const recolorFix = fixes.find((f) => f.kind === 'recolor');
@@ -288,7 +314,14 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
     expect(renameFix?.targetKind).toBe('track');
     // The recolor steers to the first non-default palette entry.
     expect(recolorFix?.color).not.toBe(12345);
-    expect(DEFAULT_CLIP_PALETTE.has(recolorFix?.color ?? -1)).toBe(true);
+    expect(VERIFIED_TEST_PALETTE.has(recolorFix?.color ?? -1)).toBe(true);
+  });
+
+  it('fails closed instead of planning a recolor without the verified palette', () => {
+    const recolor = issues.find((i) => i.kind === 'offPaletteColor');
+    expect(recolor).toBeDefined();
+    expect(planFixes(issues, [recolor!.id])).toEqual([]);
+    expect(planFixes(issues, [recolor!.id], new Set())).toEqual([]);
   });
 
   it('the rename target is itself NOT a placeholder (the fix is idempotent)', () => {
