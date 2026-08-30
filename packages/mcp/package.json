@@ -35,6 +35,6 @@
   "devDependencies": {
     "@othmanadi/loophole-core": "workspace:*",
     "tsup": "^8.5.1",
-    "tsx": "^4.22.4"
+    "tsx": "^4.23.12"
   }
 }
