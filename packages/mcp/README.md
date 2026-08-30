@@ -166,7 +166,7 @@ This package is transport-agnostic, so the network posture is enforced by the [e
 - **Bearer token (401 on mismatch).** On first activation the shell generates a random token, writes it to `bridge.json` in the extension's storage directory, and rejects any request without a matching `Authorization: Bearer` header. The human pastes the token into their client config once; the token is never in any tool output and never reaches the model.
 - **No filesystem escape.** Render output goes to the temp directory; the bridge never exposes arbitrary read or write of the user's disk.
 
-The in-package `config.ts` exports validated defaults for library consumers and supplies the result-size limit used by response helpers. The shipped listener's bind address, port probe, socket, auth gates, and `bridge.json` lifecycle are owned by the extension shell, so this published server opens no transport and adds no auth assumptions to a consumer's tree. See the root [SECURITY.md](../../SECURITY.md) for the disclosure path.
+The in-package `config.ts` exports validated defaults for library consumers and supplies the result-size limit used by response helpers. The shipped listener's bind address, port probe, socket, auth gates, and `bridge.json` lifecycle are owned by the extension shell, so this library opens no transport and adds no auth assumptions to a consumer's tree. See the root [SECURITY.md](../../SECURITY.md) for the disclosure path.
 
 ---
 
