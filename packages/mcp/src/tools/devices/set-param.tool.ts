@@ -16,7 +16,10 @@ import { ParameterReference } from '../../schemas/primitives.js';
 const inputSchema = z
   .object({
     paramId: ParameterReference,
-    value: z.number().describe("Target value; must fall within the parameter's own min..max"),
+    value: z
+      .number()
+      .finite()
+      .describe("Target value; must fall within the parameter's own min..max"),
   })
   .strict();
 

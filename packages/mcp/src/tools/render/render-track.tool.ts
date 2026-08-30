@@ -15,16 +15,19 @@ import { z } from 'zod';
 
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { Beats, TrackReference } from '../../schemas/primitives.js';
+import { BeatPosition, TrackReference } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
     trackId: TrackReference,
-    startBeat: Beats,
-    endBeat: Beats,
+    startBeat: BeatPosition,
+    endBeat: BeatPosition,
   })
   .strict()
-  .refine((a) => a.endBeat > a.startBeat, 'endBeat must be greater than startBeat');
+  .refine((a) => a.endBeat > a.startBeat, {
+    message: 'endBeat must be greater than startBeat',
+    path: ['endBeat'],
+  });
 
 export const renderTrackTool = defineTool({
   name: 'live_render_track',

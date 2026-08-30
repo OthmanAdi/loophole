@@ -23,7 +23,7 @@ const inputSchema = z
       .describe(
         "Exact built-in Live device name, e.g. 'Reverb'. Built-in devices only; third-party / VST not supported.",
       ),
-    index: z.number().int().min(0).describe("Insert position in the track's device chain"),
+    index: z.number().finite().int().min(0).describe("Insert position in the track's device chain"),
   })
   .strict();
 

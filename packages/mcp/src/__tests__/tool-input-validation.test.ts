@@ -82,6 +82,17 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
       { label: "a non-numeric bpm ('fast')", args: { bpm: 'fast' } },
       { label: 'a bpm below the 20 floor', args: { bpm: 10 } },
       { label: 'a bpm above the 999 ceiling', args: { bpm: 5000 } },
+      { label: 'NaN bpm', args: { bpm: Number.NaN }, expectedPath: ['bpm'] },
+      {
+        label: 'positive-infinity bpm',
+        args: { bpm: Number.POSITIVE_INFINITY },
+        expectedPath: ['bpm'],
+      },
+      {
+        label: 'negative-infinity bpm',
+        args: { bpm: Number.NEGATIVE_INFINITY },
+        expectedPath: ['bpm'],
+      },
       { label: 'a missing bpm', args: {} },
       { label: 'an unknown key (strict)', args: { bpm: 120, swing: 1 } },
     ],
@@ -139,12 +150,75 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
         expectedPath: ['notes', 0, 'pitch'],
       },
       {
+        label: 'a non-finite pitch',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: Number.NaN, startTime: 0, duration: 1 }],
+        },
+        expectedPath: ['notes', 0, 'pitch'],
+      },
+      {
         label: 'a negative startTime (beats)',
         args: {
           clipId: CLIP_REFERENCE,
           notes: [{ pitch: 60, startTime: -1, duration: 1 }],
         },
         expectedPath: ['notes', 0, 'startTime'],
+      },
+      {
+        label: 'a non-finite startTime',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: 60, startTime: Number.POSITIVE_INFINITY, duration: 1 }],
+        },
+        expectedPath: ['notes', 0, 'startTime'],
+      },
+      {
+        label: 'a zero note duration',
+        args: { clipId: CLIP_REFERENCE, notes: [{ pitch: 60, startTime: 0, duration: 0 }] },
+        expectedPath: ['notes', 0, 'duration'],
+      },
+      {
+        label: 'a non-finite note duration',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: 60, startTime: 0, duration: Number.NEGATIVE_INFINITY }],
+        },
+        expectedPath: ['notes', 0, 'duration'],
+      },
+      {
+        label: 'a non-finite note probability',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: 60, startTime: 0, duration: 1, probability: Number.NaN }],
+        },
+        expectedPath: ['notes', 0, 'probability'],
+      },
+      {
+        label: 'an out-of-range note probability',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: 60, startTime: 0, duration: 1, probability: 1.01 }],
+        },
+        expectedPath: ['notes', 0, 'probability'],
+      },
+      {
+        label: 'a non-finite note velocity',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [{ pitch: 60, startTime: 0, duration: 1, velocity: Number.POSITIVE_INFINITY }],
+        },
+        expectedPath: ['notes', 0, 'velocity'],
+      },
+      {
+        label: 'a non-finite velocity deviation',
+        args: {
+          clipId: CLIP_REFERENCE,
+          notes: [
+            { pitch: 60, startTime: 0, duration: 1, velocityDeviation: Number.NEGATIVE_INFINITY },
+          ],
+        },
+        expectedPath: ['notes', 0, 'velocityDeviation'],
       },
       {
         label: 'an unknown note key (strict NoteSchema)',
@@ -182,6 +256,16 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
         args: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: 'four' },
         expectedPath: ['lengthBeats'],
       },
+      {
+        label: 'a non-finite length',
+        args: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: Number.POSITIVE_INFINITY },
+        expectedPath: ['lengthBeats'],
+      },
+      {
+        label: 'a negative-infinity length',
+        args: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: Number.NEGATIVE_INFINITY },
+        expectedPath: ['lengthBeats'],
+      },
       { label: 'an empty slotId', args: { slotId: '', lengthBeats: 4 } },
       {
         label: 'a legacy positional slotId',
@@ -200,6 +284,16 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
       {
         label: 'a non-numeric value',
         args: { paramId: PARAMETER_REFERENCE, value: 'loud' },
+        expectedPath: ['value'],
+      },
+      {
+        label: 'a non-finite parameter value',
+        args: { paramId: PARAMETER_REFERENCE, value: Number.NaN },
+        expectedPath: ['value'],
+      },
+      {
+        label: 'an infinite parameter value',
+        args: { paramId: PARAMETER_REFERENCE, value: Number.NEGATIVE_INFINITY },
         expectedPath: ['value'],
       },
       { label: 'an empty paramId', args: { paramId: '', value: 1 } },
@@ -228,6 +322,16 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
         expectedPath: ['index'],
       },
       {
+        label: 'a non-finite chain index',
+        args: { trackId: TRACK_REFERENCE, deviceName: 'Reverb', index: Number.NEGATIVE_INFINITY },
+        expectedPath: ['index'],
+      },
+      {
+        label: 'a positive-infinity chain index',
+        args: { trackId: TRACK_REFERENCE, deviceName: 'Reverb', index: Number.POSITIVE_INFINITY },
+        expectedPath: ['index'],
+      },
+      {
         label: 'an empty deviceName',
         args: { trackId: TRACK_REFERENCE, deviceName: '', index: 0 },
         expectedPath: ['deviceName'],
@@ -245,15 +349,32 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
       {
         label: 'an endBeat equal to startBeat (refine)',
         args: { trackId: TRACK_REFERENCE, startBeat: 4, endBeat: 4 },
+        expectedPath: ['endBeat'],
       },
       {
         label: 'an endBeat below startBeat (refine)',
         args: { trackId: TRACK_REFERENCE, startBeat: 8, endBeat: 4 },
+        expectedPath: ['endBeat'],
       },
       {
         label: 'a negative startBeat',
         args: { trackId: TRACK_REFERENCE, startBeat: -1, endBeat: 8 },
         expectedPath: ['startBeat'],
+      },
+      {
+        label: 'a non-finite startBeat',
+        args: { trackId: TRACK_REFERENCE, startBeat: Number.POSITIVE_INFINITY, endBeat: 8 },
+        expectedPath: ['startBeat'],
+      },
+      {
+        label: 'a negative-infinity startBeat',
+        args: { trackId: TRACK_REFERENCE, startBeat: Number.NEGATIVE_INFINITY, endBeat: 8 },
+        expectedPath: ['startBeat'],
+      },
+      {
+        label: 'a non-finite endBeat',
+        args: { trackId: TRACK_REFERENCE, startBeat: 0, endBeat: Number.POSITIVE_INFINITY },
+        expectedPath: ['endBeat'],
       },
       {
         label: 'a legacy positional trackId',

@@ -23,13 +23,20 @@ import {
 import { z } from 'zod';
 
 /** MIDI pitch, 0..127. */
-export const Pitch = z.number().int().min(0).max(127).describe('MIDI pitch 0-127');
+export const Pitch = z.number().finite().int().min(0).max(127).describe('MIDI pitch 0-127');
 
 /** MIDI velocity, 0..127 (allowed fractional to match the SDK's bare `number`). */
-export const Velocity = z.number().min(0).max(127).describe('MIDI velocity 0-127');
+export const Velocity = z.number().finite().min(0).max(127).describe('MIDI velocity 0-127');
 
-/** A position or length in beats (non-negative). */
-export const Beats = z.number().min(0).describe('Position or length in beats');
+/** A finite position in beats, including beat zero. */
+export const BeatPosition = z.number().finite().min(0).describe('Non-negative position in beats');
+
+/** A finite positive duration or length in beats. */
+export const BeatDuration = z
+  .number()
+  .finite()
+  .gt(0)
+  .describe('Strictly positive duration in beats');
 
 /**
  * One strict, type-tagged opaque reference. The wire never accepts positional
@@ -115,12 +122,16 @@ export const CuePointReference = opaqueReference<'cue-point', CoreCuePointRefere
 export const NoteSchema = z
   .object({
     pitch: Pitch,
-    startTime: Beats,
-    duration: Beats,
+    startTime: BeatPosition,
+    duration: BeatDuration,
     velocity: Velocity.optional(),
     muted: z.boolean().optional(),
-    probability: z.number().min(0).max(1).optional().describe('Playback probability 0-1'),
-    velocityDeviation: z.number().optional().describe('Per-note velocity randomization range'),
+    probability: z.number().finite().min(0).max(1).optional().describe('Playback probability 0-1'),
+    velocityDeviation: z
+      .number()
+      .finite()
+      .optional()
+      .describe('Per-note velocity randomization range'),
     releaseVelocity: Velocity.optional().describe('Note-off velocity 0-127'),
     selected: z.boolean().optional(),
   })

@@ -13,7 +13,7 @@ import { ok } from '../../result/ok.js';
 
 const inputSchema = z
   .object({
-    bpm: z.number().min(20).max(999).describe('Beats per minute, 20-999'),
+    bpm: z.number().finite().min(20).max(999).describe('Beats per minute, 20-999'),
   })
   .strict();
 

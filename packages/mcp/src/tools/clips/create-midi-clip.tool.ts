@@ -16,7 +16,7 @@ import { ClipSlotReference } from '../../schemas/primitives.js';
 const inputSchema = z
   .object({
     slotId: ClipSlotReference,
-    lengthBeats: z.number().min(0.25).describe('Clip length in beats, minimum 0.25'),
+    lengthBeats: z.number().finite().min(0.25).describe('Clip length in beats, minimum 0.25'),
   })
   .strict();
 
