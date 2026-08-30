@@ -21,13 +21,13 @@ The port is one of `8420` to `8429` (the bridge probes that range and binds the 
 
 ## The five checks
 
-| #   | Check                                 | How                                                                                                                                                                       | FIX line on failure                                                                                                  |
-| --- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| 1   | Live 12.4.5b Suite is running         | Confirm an Ableton Live process is up; check 4 (the port responding) is the strong signal                                                                                 | "Open Ableton Live 12 Suite (beta build 12.4.5b)."                                                                   |
-| 2   | The extension is installed and active | `bridge.json` exists in the extension `storageDirectory`                                                                                                                  | "Install the Loophole extension `.ablx` in Live, Settings, Extensions, then restart Live."                           |
-| 3   | Node >= 24.14.1                       | run `node --version` and compare                                                                                                                                          | "Update Node to >= 24.14.1."                                                                                         |
-| 4   | Bridge port reachable                 | read `port` from `bridge.json`, then `GET http://127.0.0.1:<port>/mcp` with header `Authorization: Bearer <token>`; expect a valid MCP response, not a connection refusal | "Live is running but the bridge did not answer on <port>. Restart Live, and check that no other app holds the port." |
-| 5   | Token present                         | `bridge.json` contains a non-empty `token`                                                                                                                                | "No token in bridge.json. Reinstall or restart the extension to regenerate it."                                      |
+| #   | Check                                    | How                                                                                                                                                                       | FIX line on failure                                                                                                  |
+| --- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | A supported current Live beta is running | Confirm an Ableton Live process is up; check 4 is the stronger bridge signal                                                                                              | "Open the Live beta build used to package and test this extension."                                                  |
+| 2   | The extension is installed and active    | `bridge.json` exists in the extension `storageDirectory`                                                                                                                  | "Install the Loophole extension `.ablx` in Live, Settings, Extensions, then restart Live."                           |
+| 3   | Node >= 24.14.1                          | run `node --version` and compare                                                                                                                                          | "Update Node to >= 24.14.1."                                                                                         |
+| 4   | Bridge port reachable                    | read `port` from `bridge.json`, then `GET http://127.0.0.1:<port>/mcp` with header `Authorization: Bearer <token>`; expect a valid MCP response, not a connection refusal | "Live is running but the bridge did not answer on <port>. Restart Live, and check that no other app holds the port." |
+| 5   | Token present                            | `bridge.json` contains a non-empty `token`                                                                                                                                | "No token in bridge.json. Reinstall or restart the extension to regenerate it."                                      |
 
 Notes on the checks:
 
@@ -42,7 +42,7 @@ Print a compact table, one row per check, each marked `PASS` or `FIX` with the F
 ```
 Loophole /doctor
 
-  1. Live 12 Suite running ............ PASS
+  1. Supported Live beta running ...... PASS
   2. Extension installed (bridge.json)  PASS
   3. Node >= 24.14.1 .................. PASS
   4. Bridge port reachable (8420) ..... PASS
@@ -56,7 +56,7 @@ When something fails, show the FIX line on that row and a count in the verdict:
 ```
 Loophole /doctor
 
-  1. Live 12 Suite running ............ PASS
+  1. Supported Live beta running ...... PASS
   2. Extension installed (bridge.json)  FIX: Install the Loophole extension .ablx in Live, Settings, Extensions, then restart Live.
   3. Node >= 24.14.1 .................. PASS
   4. Bridge port reachable ............ FIX: bridge.json not found, so the port is unknown. Resolve check 2 first.

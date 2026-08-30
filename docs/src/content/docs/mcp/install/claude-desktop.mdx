@@ -1,6 +1,6 @@
 ---
 title: Install for Claude Desktop
-description: Patch the Claude Desktop config to reach the Loophole Bridge, then verify a read-only tool.
+description: Merge a Loophole entry into Claude Desktop's MCP config, then verify a read-only tool.
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -35,14 +35,14 @@ Replace `<port>` and `<token-from-bridge.json>` with the real values. Then **ful
 quit and reopen Claude Desktop**: closing the window is not enough, the config is
 read on launch.
 
-The `ableton-live` skill's `/setup` can write this file for you from
-`bridge.json`.
+The `ableton-live` skill's `/setup` can emit this entry from `bridge.json`. It does not edit the
+file. Merge `loophole` alongside existing servers rather than replacing `mcpServers`.
 
 ## Verify it worked
 
 <Steps>
 
-1. Live 12.4.5b Suite is running with the Loophole extension active.
+1. The supported Live beta used for this package test is running with the extension active.
 2. After the restart, `loophole` appears in Claude Desktop's tool list.
 3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
    confirm it returns your real track names.

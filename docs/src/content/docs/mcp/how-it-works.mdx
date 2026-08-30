@@ -16,7 +16,7 @@ flowchart LR
   end
   subgraph Live["Ableton Live 12 Suite"]
     subgraph Host["Extension Host (persistent Node process)"]
-      A["activate(): McpServer +<br/>StreamableHTTPServerTransport +<br/>WriteQueue + id-to-handle resolver"]
+      A["activate(): McpServer +<br/>StreamableHTTPServerTransport +<br/>WriteQueue + reference resolver"]
       LOM["ExtensionContext to Song to Tracks to<br/>Clips to Notes to Devices"]
       A -->|sync getters / async mutations| LOM
     end
@@ -32,19 +32,15 @@ it is off the network by construction.
 
 ## How an object is addressed
 
-The Live Object Model hands out host-local handles that can go stale the moment
-the tree changes. Those handles never cross the wire. Instead, every object has
-a stable string path id, resolved fresh on every call:
+The Live Object Model hands out host-local handles. Those handles never cross the wire.
+Instead, current list and read responses return opaque session references. Wire tags distinguish
+tracks, scenes, cues, slots, clips, devices, and parameters:
 
-```
-song
-song/tempo
-track:2                      the third track
-track:2/clipslot:4/clip      the clip in that session slot
-track:2/device:1/param:6     that device's seventh parameter
-```
+`lhref_trk_<opaque-token>` shows the shape of a track reference, not a copyable value. Never
+construct or parse one. Pass the exact returned string through unchanged. Re-list after structural
+changes because references are session-scoped and intentionally not durable.
 
-If a path no longer resolves (a track was deleted, an index shifted), the tool
+If a reference is stale or no longer identifies the same object, the tool
 returns a clean `STALE_REFERENCE` result that tells the model to re-list and try
 again. It never throws an opaque protocol error.
 
@@ -55,20 +51,21 @@ edit.
 
 - **The model** reads the Set, reasons, and chooses which tool to call with
   which arguments.
-- **The bridge** validates the arguments, runs one pure transform where music
+- **The bridge** validates the arguments, rejects non-finite or out-of-domain numeric inputs before
+  they reach Live, runs one pure transform where music
   math is involved (snap to scale, humanize, gain math), and writes the result
   through one transaction.
 
-The musical correctness lives in pure functions that have nothing to do with
-Live and are tested exhaustively in CI. The model cannot corrupt a Set by being
-creative: it can only call a tool, and the tool does one well-defined thing.
+The transformation logic lives in pure functions that have nothing to do with Live and can be
+tested without it. Tools still mutate a real Set when the user authorizes them, so preview the
+target, use current references, and keep a saved copy for destructive experiments.
 
-## One tool call is one undo
+## Mutation and undo boundaries
 
-Every mutating tool runs its write inside a single `withinTransaction`, serial
-through one write queue. So one tool call collapses to one entry in Live's undo
-history. Humanize a clip, change your mind, press undo once: the clip is back.
-This is the headline correctness property, and it holds for every write tool.
+Mutations serialize through one write queue. Simple setters are designed to initiate their write
+inside one SDK transaction. Create then configure flows require separate mutations because the SDK
+must first return the created object. SDK-free tests check intended transaction accounting; they do
+not prove Live's undo history. Verify actual entries during the Live-runtime gate.
 
 ## The trust boundary
 

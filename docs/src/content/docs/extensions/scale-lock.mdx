@@ -1,6 +1,6 @@
 ---
 title: Scale Lock
-description: Snap every note in a MIDI clip to the scale set in Live, in one undo step.
+description: Snap MIDI pitches to the scale currently set in Live.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -12,8 +12,7 @@ nearest. It reports how many notes were off-scale.
 ## What it does
 
 It reads the root note and scale intervals from your Set, snaps each note's pitch
-into the scale, and writes the notes back. It moves pitch only, never timing. The
-edit is one undo.
+into the scale, and writes the notes back. It moves pitch only, never timing.
 
 ## Right-click path
 
@@ -22,9 +21,10 @@ small dialog shows the live scale read from the Set (for example, "Scale: F
 Minor"), three options (Snap up, Snap down, Nearest, with Nearest the default),
 and a count line like "7 of 32 notes are off-scale". Press Apply.
 
-<Aside type="note" title="Screenshot">
-  A screenshot of the dialog and a short before-and-after clip go here once captured in Live 12.4.5b
-  Suite.
+<Aside type="caution" title="Current verification">
+  The pitch transform and handler plan are exercised without Live. Menu registration, the rendered
+  dialog, the SDK write, and Live's resulting undo entry are `NOT_RUN_NO_LIVE`; see the [E2E
+  checklist](https://github.com/OthmanAdi/loophole/blob/main/packages/extension/E2E_CHECKLIST.md).
 </Aside>
 
 ## Beta limit

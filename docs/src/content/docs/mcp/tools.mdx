@@ -1,19 +1,19 @@
 ---
 title: Tool reference
-description: The complete Loophole Bridge tool surface, generated from the running MCP server.
+description: The Loophole Bridge tool surface generated from the built library against its fake adapter.
 ---
 
 import toolsData from '../../../data/tools.json';
 
 The Loophole Bridge exposes a small, deliberate set of MCP tools over a Live
 Set. This reference is generated from the server itself: a build step boots the
-real server, calls the standard `tools/list` endpoint, and writes the result to
-`tools.json`, which these pages render. The reference cannot drift from the
-running server, because it is the running server.
+built server against `FakeLiveBridge`, calls the standard `tools/list` endpoint, and writes the
+result to `tools.json`, which these pages render. This checks the registered library surface, not
+the Extension Host or a running Live instance.
 
 There are **{toolsData.length} tools**, grouped by what they touch. Reads carry
-a `read` badge, writes a `write` badge. Every write is exactly one undo step in
-Live.
+a `read` badge and writes a `write` badge. Writes serialize through the bridge; actual Live undo
+entries remain an E2E gate.
 
 ## Categories
 

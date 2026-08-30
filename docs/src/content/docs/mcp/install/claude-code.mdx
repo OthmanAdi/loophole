@@ -26,7 +26,7 @@ claude mcp list   # loophole should appear
 Confirm the exact header flag against your installed Claude Code version; the
 header carries `Authorization: Bearer <token>`.
 
-## The skill writes this for you
+## Emit a merge-safe block with `/setup`
 
 Install the `ableton-live` skill (a thin `/doctor` + `/setup` + recipes layer):
 
@@ -34,20 +34,18 @@ Install the `ableton-live` skill (a thin `/doctor` + `/setup` + recipes layer):
 npx skills add OthmanAdi/loophole --skill ableton-live
 ```
 
-The `ableton-live` skill (alias `loophole`) reads `bridge.json` and writes this
-config for you:
+The `ableton-live` skill reads `bridge.json` and emits a merge-safe block for you to review:
 
 - `/doctor` checks the prerequisites (Live running, extension installed, port
   reachable, token present) and prints exactly what to fix.
-- `/setup` reads the port and token and emits the correct Claude Code config. It
-  never invents a port or token; if `bridge.json` is missing it tells you to run
-  `/doctor` first.
+- `/setup` reads the port and token and emits the Claude Code command. It never executes it,
+  writes a config, invents a value, or replaces existing servers.
 
 ## Verify it worked
 
 <Steps>
 
-1. Live 12.4.5b Suite is running with the Loophole extension active.
+1. The supported Live beta used for this package test is running with the extension active.
 2. `claude mcp list` shows `loophole`.
 3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
    confirm it returns your real track names.

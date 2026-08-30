@@ -6,9 +6,9 @@
 
 The documentation site for [Loophole](../README.md), the Ableton MCP server and extension kit. It is a standalone [Astro Starlight](https://starlight.astro.build/) project that lives under `docs/`, with its own toolchain. It is **not** a pnpm workspace member, so the lean monorepo CI stays decoupled from the docs build.
 
-Published at [https://othmanadi.github.io/loophole/](https://othmanadi.github.io/loophole/), a GitHub Pages project site. Each deploy is a manual maintainer action (see [Deploy](#deploy)).
+The versioned source under `src/content/docs/` is authoritative for this changeset. This README does not claim that GitHub Pages carries the current commit.
 
-This site documents a young project, built in the open on the Ableton Extensions SDK. The tool reference is generated from the running Loophole Bridge, the SDK-free layers it describes are tested without Live, and the in-Live behaviors are verified against real Ableton as the final step. Each page states the limit that applies to it.
+The tool reference is generated from the built MCP library against `FakeLiveBridge`. That checks the registered protocol surface without Live. SDK typechecking, `.ablx` packaging, Extension Host loading, and Live-runtime behavior remain separate gates in the [E2E checklist](../packages/extension/E2E_CHECKLIST.md).
 
 ---
 
@@ -31,7 +31,7 @@ Content is MDX under `src/content/docs/`, one file per sidebar entry. Diagrams a
 
 The MCP tool reference is not written by hand. The running Loophole Bridge is the source of truth, and the docs are a projection of it.
 
-[`scripts/dump-tools.ts`](scripts/dump-tools.ts) boots the real `buildServer` in-process against `FakeLiveBridge` (no Ableton, no Live, no socket), connects an in-memory MCP client, calls the standard `tools/list` endpoint, and writes the result to [`src/data/tools.json`](src/data/tools.json). The `/mcp/tools/*` pages and the `llms.txt` tool block both render from that file, so the docs can never drift from the server.
+[`scripts/dump-tools.ts`](scripts/dump-tools.ts) boots `buildServer` in-process against `FakeLiveBridge` (no Ableton, Live, or socket), connects an in-memory MCP client, calls `tools/list`, and writes [`src/data/tools.json`](src/data/tools.json). The `/mcp/tools/*` pages and `llms.txt` tool block render from that snapshot. Regeneration catches protocol-description drift; it does not prove the Live adapter.
 
 ```mermaid
 flowchart LR
@@ -61,7 +61,7 @@ pnpm --filter @othmanadi/ableton-mcp build
 
 # 2. In docs/: install and build (prebuild regenerates tools.json from the server).
 cd docs
-npm install
+npm ci --ignore-scripts
 npm run build
 ```
 
@@ -71,9 +71,9 @@ npm run build
 
 ## Deploy
 
-Deploy is manual. [`docs-deploy.yml`](../.github/workflows/docs-deploy.yml) is `workflow_dispatch` only: it publishes to GitHub Pages, but only when a maintainer triggers it from the Actions tab. Committing or merging the workflow never publishes anything. This matches the launch gate for the whole repo: nothing public ships without explicit approval.
+[`docs-deploy.yml`](../.github/workflows/docs-deploy.yml) is a manual `workflow_dispatch` workflow. Its presence does not prove a deployment, and a local build does not update GitHub Pages. A maintainer must separately authorize and verify any deployment.
 
-The deploy job builds the bridge, regenerates `tools.json`, builds the site, and uploads the `docs/dist` artifact to Pages, so a published site always carries a fresh tool reference.
+When explicitly run, the workflow builds the library, regenerates `tools.json`, builds the site, and uploads `docs/dist`. Verify the resulting deployment commit and public URLs before describing the site as current.
 
 ---
 

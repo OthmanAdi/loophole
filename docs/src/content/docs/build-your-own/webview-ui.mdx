@@ -17,9 +17,10 @@ From inside a command, open a modal dialog with HTML content and a size:
 context.ui.showModalDialog({ data: html, mimeType: 'text/html' }, 320, 220);
 ```
 
-Keep the dialog small and single-purpose: the live scale and three snap options
-for Scale Lock, a strength slider for Humanize, a measurement table for Gain
-Stage Doctor. One Apply button. No multi-step wizards.
+Keep each dialog small and single-purpose: the live scale and three snap options
+for Scale Lock, or a strength slider for Humanize. When review must precede mutation, separate
+the steps. Gain Stage Doctor uses a configuration modal, a read-only progress task, then a review
+modal whose Apply button is the first point that authorizes a mixer write.
 
 ## Return the result to the host
 

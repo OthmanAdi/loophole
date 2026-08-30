@@ -41,7 +41,8 @@ supports an http or streamable-http transport.
 
 ## Check the protocol without a client
 
-The MCP Inspector confirms the server answers before you wire any editor:
+The external MCP Inspector can confirm that a running bridge answers before you wire an editor.
+It is not a Loophole CLI:
 
 ```bash
 npx @modelcontextprotocol/inspector
@@ -54,7 +55,7 @@ A healthy server lists 12 tools.
 
 <Steps>
 
-1. Live 12.4.5b Suite is running with the Loophole extension active.
+1. The supported Live beta used for this package test is running with the extension active.
 2. Your client (or the Inspector) lists the Loophole tools.
 3. Run `live_get_song_overview` (or `live_find_track`) and confirm it returns
    your real track names.

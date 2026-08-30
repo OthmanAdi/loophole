@@ -1,6 +1,6 @@
 ---
 title: Extensions SDK cheatsheet
-description: The handful of SDK calls a context-menu extension actually uses, and the one rule that governs writes.
+description: The SDK shapes a context-menu extension uses, including the synchronous transaction boundary.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -30,9 +30,9 @@ intervals, the grid, the track list, a track's clip slots and devices, a clip's
 notes. Read what you need into plain data, then leave the SDK behind for the
 logic.
 
-## The one rule for writes
+## The transaction boundary
 
-Every write goes inside one transaction so it is one undo step:
+Initiate related writes inside `withinTransaction`:
 
 ```ts
 context.withinTransaction(() => {
@@ -40,17 +40,17 @@ context.withinTransaction(() => {
 });
 ```
 
-Two facts make this work, and getting them wrong is the most common mistake:
+The important boundary is when work is initiated:
 
 - **The transaction callback is synchronous.** Property setters (a clip's notes,
   a track's name, a clip's color) are synchronous, so they run inline.
-- **Only create, delete, duplicate, and parameter get/set are async.** To group
-  async operations into one undo, return `Promise.all([...])` from the
-  synchronous callback. Never `await` inside the callback.
+- **Async operations must be initiated during that synchronous callback.** Returning their
+  aggregate promise lets the host wait for completion. A new mutation started after an `await`
+  is outside the earlier initiation window and cannot be folded back into it.
 
-So a pure-setter edit (snap notes to scale) is a plain synchronous transaction,
-while an edit that creates clips returns a `Promise.all` of the creates. That one
-distinction shapes every write an extension makes.
+So a pure-setter edit can use one synchronous transaction. Create then populate flows often need
+two explicit phases because the created object must be returned before follow-up setters can be
+addressed. Do not describe those flows as atomic. Verify the resulting undo entries in Live.
 
 ## Slow operations and cancel
 

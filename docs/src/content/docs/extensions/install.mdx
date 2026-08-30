@@ -5,18 +5,18 @@ description: Build the Loophole Kit extensions from source and install them in L
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-The Loophole Kit is five Ableton extensions. Each is a right-click action inside
-Live. They share the same core as the bridge, and each writes its edit in one
-undo step.
+The Loophole Kit registers five right-click actions from one extension package. They share
+the same core as the bridge. Undo behavior is checked separately in Live.
 
 <Aside type="note" title="Install from source">
-  The extensions install from source today, the same way the bridge does: there is no released
-  `.ablx` yet. When a signed release exists, this page will link to the download.
+  There is no released `.ablx`. Licensed SDK users can package one locally and then run the evidence
+  gates below.
 </Aside>
 
 ## Prerequisites
 
-- **Ableton Live 12.4.5b Suite**, with Dev Mode enabled in Settings.
+- **A supported current Ableton Live beta.** Dev Mode is required only for `start:live`
+  hot-loading, not for installing a packaged `.ablx` through Settings.
 - **The Extensions SDK and CLI tarballs** from your own Ableton Beta Program
   access. They are not redistributable, so Loophole does not ship them.
 - **Node 24.14.1 or newer** and **pnpm 10**.
@@ -30,7 +30,7 @@ undo step.
    ```bash
    git clone https://github.com/OthmanAdi/loophole.git
    cd loophole
-   pnpm install
+   pnpm install --frozen-lockfile --ignore-scripts
    ```
 
 2. Add your local SDK and CLI tarballs (do not commit the resulting manifest or
@@ -59,14 +59,19 @@ one extension. Each appears as its own right-click action.
 
 <Steps>
 
-1. Live 12.4.5b Suite is running with the extension installed and active.
-2. Right-click a MIDI clip. You should see "Lock to Scale…" and "Humanize…" in
-   the menu.
-3. Run one of them on a clip and confirm the edit, then press undo once to
-   confirm the whole edit reverts in a single step.
+1. Record the `.ablx` filename, SHA-256, manifest, SDK and CLI versions, exact Live build,
+   operating system, and install path.
+2. Copy `ExtensionHost.txt` and `Log.txt` immediately after the load attempt. Preserve the
+   activation output and complete exception stacks.
+3. Confirm all five actions appear, `bridge.json` is created, authentication rejects a missing
+   token, and a real client can call `live_get_song_overview`.
+4. Run every action in a disposable Set and record its actual Live undo entries. For Session to
+   Song, compare Live with the receipt: 0 for a no-op, 2 for cue-only, or 3 for a run that clears,
+   creates, and populates.
 
 </Steps>
 
-If the menu actions appear and one undo reverts an edit, the install is good. If
-the actions are missing, confirm Dev Mode and the install, then see
+Use the full [E2E checklist](https://github.com/OthmanAdi/loophole/blob/main/packages/extension/E2E_CHECKLIST.md).
+The current package and Live-runtime gates are `NOT_RUN` and `NOT_RUN_NO_LIVE`. If actions are
+missing, collect the exact logs before changing the package or template, then see
 [Troubleshooting](/mcp/troubleshooting/).

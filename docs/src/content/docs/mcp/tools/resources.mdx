@@ -6,19 +6,22 @@ description: Read-only project state the model can browse, and the recipe prompt
 Alongside the 12 tools, the bridge exposes read-only MCP **resources** and a
 small set of **prompts**. Resources let the model pull context without spending a
 tool call; prompts are reusable scaffolds that compose the tools. Neither adds
-new capability over the tools, and both return names and string path ids, never a
-host handle.
+new capability over the tools. Resources return names and opaque session references, never host
+handles.
 
 ## Resources
 
 All read-only, all mirroring the read tools, all capped so a large Set never
 floods the context.
 
-| URI                           | Returns                                                                                               |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `ableton://song`              | The overview snapshot: tempo, scale, grid, counts, track list. Same data as `live_get_song_overview`. |
-| `ableton://track/{i}`         | One track's clips (session and arrangement) and its devices and parameters with ids.                  |
-| `ableton://clip/{path}/notes` | The clip's notes as note objects, with the same cap and summary rule as `live_get_notes`.             |
+| Resource                           | Returns                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `ableton://song`                   | The overview snapshot with current track references.                   |
+| `ableton://track/{reference}`      | Clips, devices, and parameters for a current returned track reference. |
+| `ableton://clip/{reference}/notes` | Notes for a current returned MIDI clip reference.                      |
+
+Pass the returned reference through unchanged, encoded only as required by the resource URI. Never
+invent a token or use a legacy positional path. Re-list after structural changes.
 
 The model can read `ableton://song` as context and only escalate to a tool when
 it needs to act, or needs a filtered or large read.
@@ -42,10 +45,10 @@ behalf.
 A tool never throws to the protocol. Every failure is a normal result with
 `isError: true` and a recovery hint, so the model can self-correct in one turn:
 
-| Code              | Meaning                                                      | The hint                                   |
-| ----------------- | ------------------------------------------------------------ | ------------------------------------------ |
-| `STALE_REFERENCE` | The path no longer resolves (object deleted, index shifted). | Re-list and use a fresh id.                |
-| `WRONG_TYPE`      | The id is the wrong object type for this tool.               | Use an id from the matching list tool.     |
-| `BAD_INPUT`       | An argument is out of range or malformed.                    | Fix the argument to the stated constraint. |
-| `SDK_REJECTED`    | The host refused the operation, or the queue is full.        | Retry once; if it persists, simplify.      |
-| `UNSUPPORTED`     | The feature is absent in the v1.0.0 API.                     | Do not retry a different path; stop.       |
+| Code              | Meaning                                               | The hint                                   |
+| ----------------- | ----------------------------------------------------- | ------------------------------------------ |
+| `STALE_REFERENCE` | The session reference is expired or stale.            | Re-list and use the fresh returned value.  |
+| `WRONG_TYPE`      | The reference is the wrong object kind.               | Use a value from the matching list tool.   |
+| `BAD_INPUT`       | An argument is out of range or malformed.             | Fix the argument to the stated constraint. |
+| `SDK_REJECTED`    | The host refused the operation, or the queue is full. | Retry once; if it persists, simplify.      |
+| `UNSUPPORTED`     | The feature is absent in the v1.0.0 API.              | Do not retry a different path; stop.       |

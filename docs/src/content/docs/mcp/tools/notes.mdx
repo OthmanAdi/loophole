@@ -1,12 +1,12 @@
 ---
 title: Note tools
-description: Read all MIDI notes from a clip and replace them in one undo step.
+description: Read all MIDI notes from a clip and replace them in one bounded mutation.
 ---
 
 import ToolCategory from '../../../../components/ToolCategory.astro';
 
 The MIDI workhorses. `live_get_notes` reads a clip's notes as plain note
-objects; `live_set_notes` replaces the whole note array in one transaction. The
+objects; `live_set_notes` replaces the whole note array in one mutation. The
 read-then-transform-then-write pattern is how humanize, quantize, and write-a-melody
 all work. A huge clip returns a summary plus the first notes rather than a silent
 partial dump.

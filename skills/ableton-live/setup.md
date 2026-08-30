@@ -1,6 +1,6 @@
 # /setup
 
-Read the port and bearer token the extension wrote to `bridge.json`, then write the correct MCP client config for the user's client. This procedure never invents a port or token. If `bridge.json` is absent, stop and tell the user to run `/doctor` first.
+Read the port and bearer token from `bridge.json`, then emit one merge-safe MCP client block for the user's client. Do not edit, overwrite, or replace a config file. This procedure never invents a port or token. If `bridge.json` is absent, stop and tell the user to run `/doctor` first.
 
 `/setup` reads a file and emits a client config. It does not import bridge code and does not talk to Live. The only Live touch is the verify step at the end, which is one read-only bridge tool call the user runs in their client.
 
@@ -19,13 +19,13 @@ Resolve the extension `storageDirectory` (the path Live reports for the Loophole
 
 Take `port`, `token`, and `url` straight from this file. The examples below use `8420` and `<token-from-bridge.json>` as placeholders; substitute the real values you read. If the file is missing, the bridge is not running or the extension is not installed: stop and tell the user to run `/doctor`, do not guess a port or mint a token.
 
-## Step 2: emit the client config
+## Step 2: emit a merge-safe client block
 
-Ask which client the user runs (or detect it from context), then emit only that block.
+Ask which client the user runs, or detect it from context, then print only the target path, the `loophole` entry, and a reminder to merge it alongside existing servers. Never replace an existing `mcpServers` object and never apply the change on the user's behalf.
 
 ### Claude Code (preferred)
 
-Add the HTTP transport and attach the bearer token as a header:
+Emit this command for the user to review and run. Do not execute it:
 
 ```bash
 claude mcp add --transport http loophole http://127.0.0.1:8420/mcp \
@@ -37,7 +37,7 @@ claude mcp list   # verify "loophole" is listed
 
 ### Claude Desktop
 
-Patch the config file, then fully quit and reopen Claude Desktop (closing the window is not enough; the server list is read on launch):
+Emit the target path and entry below. The user merges it into the existing config, then fully quits and reopens Claude Desktop:
 
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -54,11 +54,11 @@ Patch the config file, then fully quit and reopen Claude Desktop (closing the wi
 }
 ```
 
-If `mcpServers` already exists, add the `loophole` key alongside the others rather than replacing the object. After saving, quit Claude Desktop completely and reopen it.
+This is a merge fragment. Add `loophole` alongside existing servers. Do not replace the surrounding object.
 
 ### Cursor
 
-Write the same `mcpServers` block to `.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` for all projects):
+Emit the same merge fragment and identify `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json` for all projects, as the target:
 
 ```json
 {
@@ -76,8 +76,8 @@ Write the same `mcpServers` block to `.cursor/mcp.json` in the project (or `~/.c
 
 Confirm the wiring against the live bridge:
 
-1. Live 12.4.5b Suite is running with the Loophole extension installed (so the bridge answers). If unsure, run `/doctor`.
+1. A supported current Live beta is running with the locally packaged Loophole extension installed. If unsure, run `/doctor`.
 2. `loophole` appears in the client's MCP server or tool list (`claude mcp list` in Claude Code; the tools panel in Desktop or Cursor after the restart).
-3. Run one read-only tool: call `live_get_song_overview`. It returns the Set tempo and the real track names with ids. If you see your actual track names, the bridge is wired and working.
+3. Run one read-only tool: call `live_get_song_overview`. It returns the Set tempo and real track names with opaque session references. If you see your actual track names, the bridge is wired and working.
 
 If the tool list is empty or the call errors, the token is wrong or stale (re-read `bridge.json` and re-emit the config), or the bridge is not running (`/doctor`). The token is per install: if the extension regenerated it, the file and the running bridge must agree, so re-read the file after any reinstall or restart.

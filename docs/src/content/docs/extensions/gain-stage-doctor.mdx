@@ -1,33 +1,40 @@
 ---
 title: Gain Stage Doctor
-description: Measure the pre-FX level of audio tracks and apply a consistent trim, in one undo step.
+description: Measure pre-FX audio and propose a consistent mixer trim.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 Gain Stage Doctor measures the pre-FX audio of your audio tracks (true peak, RMS,
 crest factor), shows a table with a suggested trim to hit a target staging level,
-and on confirm writes that trim into each track's mixer volume in one undo. The
+and on confirmation writes selected trims to the tracks' mixer volume. The
 suggestion is computed from the measured level, so it is repeatable.
 
 ## What it does
 
 It renders each selected audio track's pre-FX audio over the time range, measures
-level, and suggests a trim toward a target (for example, RMS at -18 dBFS). You
-pick which tracks to apply, and it writes every trim in a single undo.
+level, and prepares a read-only trim plan toward a finite target (for example, RMS at -18 dBFS).
+You review that complete plan before a separate explicit Apply step writes any proposed trims.
+Silent renders remain visible with `silence` status and are skipped during apply.
 
 ## Right-click path
 
 Select audio tracks, or an arrangement selection across them, then right-click
-and **Gain Stage…**. A progress bar renders the tracks (cancellable), then a
-table appears: one row per track with peak, RMS, crest, and a suggested trim. Pick
-a target (-12, -18, or -20 dBFS RMS), tick the tracks to apply, and press Apply
-trims.
+and **Gain Stage…**. First pick a target (-12, -18, or -20 dBFS RMS), select the tracks to
+measure, and press Measure tracks. A cancellable progress dialog performs the read-only analysis.
+A separate review table then shows peak, RMS, crest, trim, and whether each row is proposed or
+silent. Nothing has been written at this point. Press Apply proposed trims to authorize the write,
+or Cancel to leave the Set unchanged.
 
-<Aside type="note" title="Screenshot">
-  A screenshot of the measurement table and a short demo go here once captured in Live 12.4.5b
-  Suite.
+<Aside type="caution" title="Current verification">
+  WAV analysis and the trim plan are exercised without Live. Pre-FX rendering, the displayed meter
+  values, the dB-to-mixer mapping, SDK writes, and Live undo history are `NOT_RUN_NO_LIVE`. Treat
+  the displayed dB target as uncalibrated until the E2E sweep records real Live values.
 </Aside>
+
+The apply step re-resolves each current mixer parameter and validates every reviewed numeric
+value before opening its one value transaction. A stale target, a value outside the current
+parameter range, or a corrupt/non-finite plan fails before any mixer write.
 
 ## Beta limit
 

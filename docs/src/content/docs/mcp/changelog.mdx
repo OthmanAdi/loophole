@@ -1,25 +1,20 @@
 ---
 title: Changelog
-description: Per-release notes for the Loophole Bridge, with links to the GitHub releases.
+description: Unreleased source status for the Loophole Bridge.
 ---
 
-This page tracks releases of the Loophole Bridge. The authoritative record is
-the [GitHub releases page](https://github.com/OthmanAdi/loophole/releases); this
-is the human summary. The repository
-[CHANGELOG](https://github.com/OthmanAdi/loophole/blob/main/CHANGELOG.md) follows
-Keep a Changelog and Semantic Versioning.
+This page records source status. There is no release entry to summarize. The repository
+[CHANGELOG](https://github.com/OthmanAdi/loophole/blob/main/CHANGELOG.md) is the versioned record.
 
 ## Unreleased
 
-No release is published yet, so there is no npm package or `.ablx` to download;
-the bridge and the extensions install from source. The core, bridge, and
-extension logic are fully tested against an in-memory model of the Set in CI, and
-the in-Live behavior is verified against real Ableton (Live 12.4.5b Suite) as the
-final step.
+No release is published yet, so there is no npm package or `.ablx` to download.
+The MCP build produces a self-contained, library-only tarball that is exercised through an
+isolated consumer check, while licensed SDK users package the extension locally. The tarball has
+no supported executable or CLI and is not published.
+The package and Live-runtime gates remain `NOT_RUN` and `NOT_RUN_NO_LIVE`.
 
-When the first release ships, this page will carry its version, date, and a link
-to the GitHub release, and the install pages will gain the one-line install for
-the published artifact.
+Do not infer a package, CLI, `.ablx`, deployment, or release from this source page.
 
 ### Built so far
 
@@ -29,3 +24,4 @@ the published artifact.
   code runs in CI and in Live.
 - Five extensions in the Loophole Kit: Scale Lock, Humanize, Gain Stage Doctor,
   Session to Song, and Set Janitor.
+- Finite and domain validation for every MCP numeric input before bridge calls.

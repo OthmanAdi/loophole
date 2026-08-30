@@ -11,7 +11,7 @@ ready to play.
 
 The assistant turns your description into a set of notes (pitches, start times,
 durations, velocities), creates a MIDI clip if needed, and writes the notes in.
-The write is one undo step.
+Writing into an existing clip is one mutation. Creating and then filling a clip uses two.
 
 ## The tool calls
 
@@ -27,13 +27,12 @@ The write is one undo step.
 > On my "Keys" track, make a 4-bar clip and write a I, V, vi, IV progression in C
 > major, one chord per bar, as held triads.
 
-The assistant creates the clip and writes the chords. One undo removes the notes;
-another removes the clip (create and write are two steps, as the SDK creates then
-configures).
+The assistant creates the clip and writes the chords in two mutations because the SDK must return
+the new clip before notes can be assigned. Confirm the resulting undo entries in Live.
 
 ## The honest limit
 
 The musical choices are the model's. Loophole writes exactly the notes the
 assistant produces; it does not enforce voice leading or correct a questionable
 chord. If you want notes snapped to the scale set in Live afterward, the
-[Scale Lock extension](/extensions/scale-lock/) does that in one undo.
+[Scale Lock extension](/extensions/scale-lock/) provides a dedicated in-Live action.

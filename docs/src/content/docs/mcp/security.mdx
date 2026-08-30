@@ -17,7 +17,7 @@ network by construction: another machine cannot reach it.
 Every request's `Origin` header is checked. A web origin that is not on the
 allow list is rejected with `403` before the server handles it. This is the
 DNS-rebinding guard: a random browser tab on some site cannot drive Live. Native
-MCP clients send no `Origin` and pass; web origins are rejected.
+MCP clients send no `Origin` and pass; unapproved web origins and `Origin: null` are rejected.
 
 ## Bearer token
 
@@ -32,9 +32,9 @@ sessions.
 
 - **The token.** It never appears in any tool output and is never shown to the
   model. You handle it once, by hand.
-- **Host handles.** The Live Object Model's handles are host-local and can go
-  stale; they never serialize to the wire. The public address of any object is a
-  string path id.
+- **Host handles.** Live Object Model handles never serialize to the wire. Public object references
+  are opaque, type-tagged, and session-scoped. Clients pass returned values through unchanged and
+  re-list after structural changes.
 - **Your filesystem.** File-taking surfaces are confined: a render writes to the
   temp directory, and any import is routed through Live's own import so Live
   manages the copy. The bridge never exposes arbitrary read or write of your disk

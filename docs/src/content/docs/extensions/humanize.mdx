@@ -1,6 +1,6 @@
 ---
 title: Humanize
-description: Nudge stiff MIDI off the grid with controlled randomness, in one undo step.
+description: Nudge stiff MIDI off the grid with bounded, controlled randomness.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -14,8 +14,7 @@ note loop; the difference is the per-note transform.
 
 It reads a clip's notes, jitters them within grid-scaled bounds, and writes them
 back. A strength slider sets how far, a swing slider shifts off-beats, and a
-"living pattern" option also writes note probability and velocity deviation. The
-edit is one undo.
+"living pattern" option also writes note probability and velocity deviation.
 
 ## Right-click path
 
@@ -23,9 +22,10 @@ Right-click a MIDI clip (or a clip slot selection), then **Humanize…**. A dial
 gives a Strength slider, checkboxes for Timing, Velocity, and Duration, an
 optional Swing slider, and a living-pattern checkbox. Press Apply.
 
-<Aside type="note" title="Screenshot">
-  A screenshot of the dialog and an audible before-and-after go here once captured in Live 12.4.5b
-  Suite.
+<Aside type="caution" title="Current verification">
+  Seeded tests exercise the bounds and handler plan without Live. The rendered dialog, audible
+  result, SDK write, and Live undo entry are `NOT_RUN_NO_LIVE`. No screenshot or audio demo is
+  presented as evidence.
 </Aside>
 
 ## Beta limit

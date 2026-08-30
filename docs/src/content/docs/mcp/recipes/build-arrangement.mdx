@@ -5,15 +5,14 @@ description: Turn a Session full of loops into an arranged song through your ass
 
 How to build an arrangement from session clips in Ableton: lay out which scenes
 become which song sections and how many bars each runs, and have your assistant
-write the clips into the Arrangement at the right bars, named and with cue
-points.
+plan the section order before using the in-Live Session-to-Song action.
 
 ## What it does
 
-The bridge has no session-to-arrangement "move" call, so an arrangement is built
-by reading the session and recreating clips on the timeline. The model reads the
-Set, plans section boundaries from bars to beats, and writes the clips. MIDI
-notes are copied; audio clips are referenced by file.
+The bridge has no Arrangement-write tool. The assistant reads the Session and proposes section
+boundaries from bars to beats. It does not write the Arrangement timeline. The locally packaged
+Session-to-Song extension performs that separate in-Live operation after the user approves its
+preflight.
 
 ## The tool calls
 
@@ -21,19 +20,18 @@ notes are copied; audio clips are referenced by file.
    session: which scenes hold which clips.
 2. The assistant plans the layout: section order, bars per section, the beat
    each section starts on.
-3. For each placement, the write tools create and fill clips on the arrangement
-   tracks.
+3. Present the complete plan without mutating the Set.
 
-The flagship [Session to Song extension](/extensions/session-to-song/) does the
-heavy version of this as one right-click action, where the entire build is a
-single undo. Through the bridge, the assistant composes the read and write tools
-to the same end.
+The [Session to Song extension](/extensions/session-to-song/) preflights, then runs ordered clear,
+create, and populate phases to produce physical repetitions and cues. Its receipt reports 0
+intended undo entries for a no-op, 2 for cue-only, or 3 when it clears, creates, and populates.
+On partial failure, follow the exact `undoStepsToRestore` value before a fresh preflight and retry.
 
 ## Try it
 
 > Read my session. I want Intro 8 bars, Verse 16, Chorus 16, Outro 8. Use scene
 > 1 for the intro, scene 2 for the verse, scene 3 for the chorus, scene 1 again
-> for the outro. Build it on the arrangement.
+> for the outro. Show me the complete plan without changing the Set.
 
 ## The honest limit
 

@@ -6,7 +6,7 @@ This recipe calls bridge MCP tools only. It does not import bridge code or touch
 
 ## Inputs
 
-- `clipId`, the clip to humanize, e.g. `track:2/clipslot:4/clip`. Get it from `live_list_clips` if you only have a track.
+- `clipId`, the opaque clip reference returned by the current `live_list_clips` response. Pass it through unchanged.
 - `amount`, how far to nudge timing, in beats, e.g. `0.02` (subtle) to `0.08` (loose). Stay well under one grid cell so the feel stays musical.
 - Optional: vary velocity by a few units, and set `probability` slightly below 1 on some notes for a living pattern.
 
@@ -18,11 +18,11 @@ This recipe calls bridge MCP tools only. It does not import bridge code or touch
 
 ## Undo
 
-One undo step. `live_set_notes` is a single bridge mutation, so one Ctrl/Cmd-Z reverts the whole humanize.
+This recipe performs one write mutation. The bridge is designed to initiate that write in one transaction, but the user should confirm the actual undo entry in Live. The repository's SDK-free tests do not prove Live's undo history.
 
 ## Notes and limits
 
-- MIDI clips only. `live_set_notes` on an audio clip returns a `WRONG_TYPE` error; pick a MIDI clip id from `live_list_clips`.
+- MIDI clips only. `live_set_notes` on an audio clip returns `WRONG_TYPE`; pick a MIDI clip reference from `live_list_clips`.
 - The result is random within the bounds you set: run it twice and you get two different feels, which is the point.
 - Timing, velocity, duration, and probability are the only fields in play. No automation, MIDI CC, or audio in this beta.
 - The bridge clamps pitch and velocity to 0 to 127 on write, so an out-of-range value is rejected the way Live would reject it.

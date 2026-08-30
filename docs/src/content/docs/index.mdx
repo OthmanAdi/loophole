@@ -3,7 +3,7 @@ title: Loophole
 description: Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK.
 template: splash
 hero:
-  tagline: Control Ableton Live from any LLM. The first MCP server built on Ableton's official Extensions SDK, so it installs as one .ablx with no Remote Script and no Max for Live.
+  tagline: Source preview for the first MCP server built on Ableton's official Extensions SDK. Package one .ablx locally, with no Remote Script and no Max for Live.
   actions:
     # Absolute base path: hero actions are frontmatter, not Markdown content, so
     # the rehype base-link pass in astro.config.mjs does not reach them.
@@ -27,8 +27,8 @@ Loophole has two halves that share one core.
   <Card title="Loophole Bridge" icon="seti:json">
     An MCP server that exposes a Live Set to any MCP client (Claude Code, Claude Desktop, Cursor).
     It runs inside Live as one extension, speaks Streamable HTTP on loopback, and gives an LLM a
-    small set of read and write tools over tracks, clips, notes, and devices. Every write is one
-    undo step.
+    small set of read and write tools over tracks, clips, notes, and devices. Mutations are
+    serialized and their real undo behavior is an explicit runtime gate.
   </Card>
   <Card title="Loophole Kit" icon="puzzle">
     Five Ableton extensions for the work an LLM does not need to be in the loop for: Scale Lock,
@@ -39,9 +39,9 @@ Loophole has two halves that share one core.
 
 ## The 30 second version
 
-You install one `.ablx` in Live. The extension starts a local MCP server. You
+Licensed SDK users package one `.ablx` locally and install it in Live. The extension starts a local MCP server. You
 point your MCP client at it. Now your assistant can read the Set (track names,
-clips, notes) and make edits you can undo in one step: humanize a drum loop,
+clips, notes) and request bounded edits: humanize a drum loop,
 build an arrangement from session clips, rename tracks in bulk, write a chord
 progression into a clip.
 
@@ -68,16 +68,14 @@ not claim to be.
   built on Max for Live.
 
 The one concrete difference: Loophole is built on Ableton's official Extensions
-SDK, so it installs as a single `.ablx` with no extra bridge to run. That is the
+SDK, so it is designed to package as a single `.ablx` with no extra bridge to run. That is the
 only "first" claim made anywhere here: the first MCP server built on Ableton's
 official Extensions SDK.
 
 ## Status
 
 Loophole is young, built in the open against the Ableton Extensions SDK that
-launched on 2026-06-02, with the whole monorepo on `main` and CI green. The SDK
-is `1.0.0-beta`, and so is Loophole: the tools and extensions are fully tested
-against an in-memory model of the Set in CI, and the in-Live behavior is verified
-against real Ableton (Live 12.4.5b Suite) as the final step. There is no published
-package yet, so you install from source. Where the beta SDK sets a limit, the docs
-state it.
+is beta software. The SDK-free contracts are exercised against an in-memory Set.
+SDK typechecking, `.ablx` packaging, loading, client connectivity, real writes, and undo history
+are separate gates. The package and Live-runtime gates are currently `NOT_RUN` and
+`NOT_RUN_NO_LIVE`. There is no published package, supported CLI, `.ablx`, or release.

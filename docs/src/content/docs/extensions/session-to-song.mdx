@@ -1,6 +1,6 @@
 ---
 title: Session to Song
-description: Turn a Session full of loops into an arranged song, in one undo step.
+description: Preflight a Session-to-Arrangement plan, then build it in ordered clear, create, and populate phases.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -12,21 +12,33 @@ named, colored, with named cue points marking each section.
 ## What it does
 
 You map which Session scenes become which song sections and give each a length
-in bars. The extension plans the section boundaries, then writes the clips into
-the Arrangement. MIDI notes are copied; audio clips are referenced by file. The
-whole build is one undo.
+in bars. Before writing, it validates references, destination ranges, source geometry, and
+the complete placement plan. It then runs up to three ordered mutation phases: clear the target
+range, create physical clip repetitions and cue points, then populate clip content, properties,
+and cue names. MIDI notes are copied; audio clips are referenced by file.
 
 ## Right-click path
 
-Right-click a Scene (or use the general entry), then **Build Arrangement from
-Session…**. A dialog opens with a small table: one row per section, each with a
+Right-click a Scene, then select **Build Arrangement from Session…**. A dialog opens with a
+small table: one row per section, each with a
 name, a scene picker, a bar count, and a color. A free-text field also parses a
 line like `Intro 8, Verse 16, Chorus 16, Bridge 8, Outro 8`. Press Build. A
 reverse **Export Structure** reads existing cue points back to text.
 
-<Aside type="note" title="Screenshot">
-  A screenshot and a short demo clip go here once captured in Live 12.4.5b Suite.
+<Aside type="caution" title="Current verification">
+  Planning, physical repetition counts, cue counts, ordered phase accounting, and the receipt are
+  exercised without Live. Package load, real Arrangement writes, clip playback, cue names, and
+  actual Live undo history are `NOT_RUN_NO_LIVE`. No screenshot or demo is used as a substitute for
+  those checks.
 </Aside>
+
+## Undo and recovery
+
+The receipt reports the exact intended undo count: 0 for a no-op, 2 for a cue-only build with no
+clear, or 3 when the command clears, creates, and populates. Do not describe the build as atomic.
+If creation fails after clear, the typed partial error reports `undoStepsToRestore: 1`. If
+population fails after clear and create, it reports `undoStepsToRestore: 2`. Follow that exact
+count to restore the pre-run state, then re-list source objects, preflight again, and retry.
 
 ## Beta limit
 
@@ -38,4 +50,5 @@ extension write, so complex warped or automated clips may need a touch-up after
 the build. It assumes 4/4 unless a scene's time signature is read (the SDK has no
 Set-level time signature; signature lives on the scene). Locators are written as
 cue points (time plus name), not Live's colored section locators. It is
-user-invoked, and the whole build is one undo.
+user-invoked. The receipt reports physical clip and cue counts so the runtime result can be
+checked against the plan.

@@ -11,14 +11,14 @@ track names. It is not the full tool reference (that is
 [here](/mcp/tools/)); it is the shortest line to a working setup.
 
 <Aside type="note" title="Install from source">
-  Loophole installs from source today: there is no published npm package or `.ablx` yet. When a
-  signed release exists, this page will carry the one-line install.
+  There is no published npm package, supported Loophole CLI, `.ablx`, or release. This procedure
+  packages the extension locally for verification.
 </Aside>
 
 ## Prerequisites
 
-- **Ableton Live 12.4.5b Suite** (the beta build that ships the Extensions SDK),
-  with Dev Mode enabled in Settings.
+- **A supported current Ableton Live beta.** Dev Mode is needed only for the separate
+  `start:live` hot-load path, not for installing the packaged `.ablx` below.
 - **The Extensions SDK and CLI tarballs**, downloaded from your own Ableton Beta
   Program (Centercode) access. They are not redistributable, so Loophole does
   not ship them.
@@ -33,7 +33,7 @@ track names. It is not the full tool reference (that is
    ```bash
    git clone https://github.com/OthmanAdi/loophole.git
    cd loophole
-   pnpm install
+   pnpm install --frozen-lockfile --ignore-scripts
    ```
 
 2. Add your local SDK and CLI tarballs to the extension package. This edits
@@ -73,8 +73,8 @@ claude mcp list   # loophole should appear
 
 Use the exact `<port>` and `<token>` from `bridge.json`. The
 [Claude Code install page](/mcp/install/claude-code/) has the per-client detail,
-and the [skill](/mcp/install/claude-code/#the-skill-writes-this-for-you) can
-write this config for you with `/setup`.
+and the [skill](/mcp/install/claude-code/#emit-a-merge-safe-block-with-setup) can
+emit a merge-safe config block with `/setup`. It never edits the file for you.
 
 ## Verify it worked
 
@@ -82,7 +82,7 @@ This is the step that tells you the whole chain is live.
 
 <Steps>
 
-1. Confirm **Live 12.4.5b Suite is running** with the Loophole extension
+1. Confirm the **same supported Live beta used for this package test is running** with the extension
    installed and active.
 
 2. Confirm `loophole` appears in your client's tool list (`claude mcp list`, or
@@ -101,3 +101,6 @@ This is the step that tells you the whole chain is live.
 
 From here, the [recipes](/mcp/recipes/humanize-midi/) show the common edits, and
 the [tool reference](/mcp/tools/) is the exhaustive surface.
+
+This chain has not been run in the current no-Live environment. Record package and runtime evidence
+in the [E2E checklist](https://github.com/OthmanAdi/loophole/blob/main/packages/extension/E2E_CHECKLIST.md).

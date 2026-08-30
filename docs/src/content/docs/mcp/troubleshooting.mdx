@@ -10,7 +10,7 @@ Each problem below has one cause and one fix. The `/doctor` command in the
 
 The client is not connected to the bridge.
 
-- Confirm Live 12.4.5b Suite is running with the extension installed and active.
+- Confirm the supported Live beta used for the package test is running with the extension installed and active.
   The bridge only exists while Live is open.
 - Confirm the URL and bearer token in your client config match `bridge.json`
   exactly (the port can change between runs; see port-in-use below).
@@ -19,10 +19,9 @@ The client is not connected to the bridge.
 
 ## A tool returns STALE_REFERENCE
 
-The id you passed no longer resolves: a track was deleted, an index shifted, or a
-slot emptied. Re-run `live_get_song_overview` or `live_list_clips` and use the
-fresh id. Path ids are positional by design, so they move when the tree changes;
-the error is the system telling you to re-read, not a bug.
+The opaque session reference is stale, belongs to another session, or no longer identifies the
+same object after a structural change. Re-run the matching list or read tool and pass its returned
+reference through unchanged. Never construct a reference or fall back to a positional path.
 
 ## Dev Mode hot-load vs the packaged extension
 
@@ -34,20 +33,21 @@ Two ways to run the extension behave differently:
   Extensions. Use it for a stable install.
 
 If a code change does not take effect, you are likely running the packaged
-extension while editing source. Re-package, or switch to the Dev Mode hot-load.
+extension while editing source. Re-package, or switch to the Dev Mode hot-load. Dev Mode is not
+required for the packaged install path.
 
 ## Port already in use
 
 The bridge probes the range `8420` to `8429` and writes the first free port to
 `bridge.json`. If another app holds a port, it picks the next one, so the port in
-your client config can go stale. Re-read `bridge.json` and update the config (or
-let the skill's `/setup` rewrite it). If every port in the range is taken, free
+your client config can go stale. Re-read `bridge.json` and merge the fresh block emitted by
+`/setup`. The skill does not edit your config. If every port in the range is taken, free
 one and restart Live.
 
 ## Live is not running
 
 The bridge lives inside Live's Extension Host, so there is no server to reach
-when Live is closed. Open Live 12.4.5b Suite with the extension active, then
+when Live is closed. Open the supported beta used for this package test with the extension active, then
 reconnect the client.
 
 ## Version mismatch

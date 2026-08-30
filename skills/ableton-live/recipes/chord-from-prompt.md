@@ -13,7 +13,7 @@ This recipe calls bridge MCP tools only. It does not import bridge code or touch
 
 1. `live_get_song_overview`. Read `scale` (root note, scale name, intervals), `tempo`, and the track list. Use the scale so the chords stay in the key the user already set; do not guess a key.
 2. If you need a clip:
-   - `live_list_clips` with `{ trackId }` to find an empty session slot (`kind: "empty"`, with a `slotId` like `track:2/clipslot:4`).
+   - `live_list_clips` with the current returned `{ trackId }` to find an empty Session slot and receive its opaque `slotId`.
    - `live_create_midi_clip` with `{ slotId, lengthBeats }` (bars times beats per bar; assume 4/4 unless a scene signature is read). It returns the new `clipId`.
 3. Build the chord notes in the model (no tool call): pick chord roots from the progression, voice each chord as note pitches within the Set's scale intervals, set each note's `startTime` and `duration` from the bar positions, and choose velocities. Keep pitches in 0 to 127.
 4. `live_set_notes` with `{ clipId, notes }`, the full chord array.
@@ -22,10 +22,10 @@ This recipe calls bridge MCP tools only. It does not import bridge code or touch
 
 Counts per tool call, not per recipe:
 
-- Writing into an existing clip is one undo step (one `live_set_notes`).
-- Creating a clip and then filling it is two undo steps: `live_create_midi_clip` is one, `live_set_notes` is another. The bridge cannot create and populate a clip in the same transaction, so this is two undos by design.
+- Writing into an existing clip performs one mutation.
+- Creating a clip and then filling it performs two mutations: `live_create_midi_clip`, then `live_set_notes`. The SDK must return the clip before notes can be assigned, so the combined operation is not atomic.
 
-State the count to the user so they know how many times to undo.
+State the mutation count before writing and ask the user to confirm the resulting Live undo entries.
 
 ## Notes and limits
 

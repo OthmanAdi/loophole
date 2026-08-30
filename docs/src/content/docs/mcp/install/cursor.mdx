@@ -35,13 +35,14 @@ Replace `<port>` and `<token-from-bridge.json>` with the real values from
 `bridge.json`. Reload Cursor's MCP servers (or restart Cursor) so it picks up the
 change.
 
-The `ableton-live` skill's `/setup` can write this file for you.
+The `ableton-live` skill's `/setup` can emit this merge fragment. It does not edit the file or
+replace existing servers.
 
 ## Verify it worked
 
 <Steps>
 
-1. Live 12.4.5b Suite is running with the Loophole extension active.
+1. The supported Live beta used for this package test is running with the extension active.
 2. `loophole` appears in Cursor's MCP server list as connected.
 3. Ask the assistant to run `live_get_song_overview` (or `live_find_track`) and
    confirm it returns your real track names.
