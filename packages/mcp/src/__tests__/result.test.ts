@@ -7,13 +7,14 @@
  *    truncation notice is appended, with the total never exceeding the cap;
  *  - `ok` returns the human summary as text AND the typed payload as
  *    `structuredContent` (wrapping a bare array/scalar under `value`), capping the
- *    text;
+ *    complete serialized envelope and reporting any structured truncation;
  *  - `err` returns `isError: true` with the message, an optional `Recovery:` line,
  *    and an optional `code` in `structuredContent`.
  */
 
 import { describe, expect, it } from 'vitest';
 
+import { serializedByteLength } from '../result/bounded-result.js';
 import { truncate } from '../result/truncate.js';
 import { ok, err } from '../result/ok.js';
 import { CHARACTER_LIMIT } from '../config/config.js';
@@ -96,6 +97,112 @@ describe('ring 1: ok() shapes a success result', () => {
     expect((result.content[0]?.text.length ?? 0) <= CHARACTER_LIMIT).toBe(true);
     expect(result.content[0]?.text).toContain('[output truncated');
   });
+
+  it('caps the complete serialized result and preserves a useful structured prefix', () => {
+    const items = Array.from({ length: 1_000 }, (_, index) => ({
+      index,
+      name: `item-${index}`,
+      payload: 'x'.repeat(1_000),
+    }));
+
+    const result = ok({ items }, 'Large result');
+
+    expect(serializedByteLength(result)).toBeLessThanOrEqual(CHARACTER_LIMIT);
+    const boundedItems = result.structuredContent?.items as { index: number }[];
+    expect(boundedItems.length).toBeGreaterThan(0);
+    expect(boundedItems.length).toBeLessThan(items.length);
+    expect(boundedItems[0]?.index).toBe(0);
+    expect(result.structuredContent?._meta).toMatchObject({
+      loopholeResult: {
+        truncated: true,
+        reasons: expect.arrayContaining(['serialized_size_limit', 'collection_limit']),
+        limitBytes: CHARACTER_LIMIT,
+      },
+    });
+  });
+
+  it('normalizes circular references deterministically and reports the loss', () => {
+    const payload: { name: string; self?: unknown } = { name: 'cycle' };
+    payload.self = payload;
+
+    const first = ok(payload);
+    const second = ok(payload);
+
+    expect(first).toEqual(second);
+    expect(first.structuredContent?.self).toBe('[circular reference]');
+    expect(first.structuredContent?._meta).toMatchObject({
+      loopholeResult: {
+        truncated: true,
+        reasons: ['circular_reference'],
+        circularReferences: 1,
+      },
+    });
+    expect(serializedByteLength(first)).toBeLessThanOrEqual(CHARACTER_LIMIT);
+  });
+
+  it('bounds deeply nested values without overflowing the serializer', () => {
+    const root: Record<string, unknown> = {};
+    let cursor = root;
+    for (let depth = 0; depth < 100; depth += 1) {
+      const next: Record<string, unknown> = {};
+      cursor.next = next;
+      cursor = next;
+    }
+
+    const result = ok(root, 'Deep result');
+
+    expect(serializedByteLength(result)).toBeLessThanOrEqual(CHARACTER_LIMIT);
+    expect(result.structuredContent?._meta).toMatchObject({
+      loopholeResult: {
+        truncated: true,
+        reasons: ['depth_limit'],
+        depthLimitHits: 1,
+      },
+    });
+  });
+
+  it('turns non-JSON and inaccessible values into bounded markers', () => {
+    const payload: Record<string, unknown> = {
+      big: 9_007_199_254_740_993n,
+      callback: () => 'not serializable',
+      missing: undefined,
+    };
+    Object.defineProperty(payload, 'secret', {
+      enumerable: true,
+      get: () => {
+        throw new Error('C:\\private\\Ableton\\internal.log');
+      },
+    });
+
+    const result = ok(payload);
+
+    expect(result.structuredContent).toMatchObject({
+      big: '9007199254740993n',
+      callback: '[unsupported function]',
+      missing: '[unsupported undefined]',
+      secret: '[inaccessible value]',
+    });
+    expect(JSON.stringify(result)).not.toContain('C:\\private\\Ableton');
+    expect(result.structuredContent?._meta).toMatchObject({
+      loopholeResult: {
+        truncated: true,
+        reasons: expect.arrayContaining(['inaccessible_value', 'non_json_value']),
+      },
+    });
+  });
+
+  it('preserves a __proto__ data key without mutating the result prototype', () => {
+    const payload = JSON.parse('{"__proto__":{"polluted":true},"safe":1}') as Record<
+      string,
+      unknown
+    >;
+
+    const result = ok(payload, 'Prototype-safe result');
+
+    expect(Object.hasOwn(result.structuredContent ?? {}, '__proto__')).toBe(true);
+    expect(result.structuredContent?.__proto__).toEqual({ polluted: true });
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
 });
 
 describe('ring 1: err() shapes an error result', () => {
@@ -115,5 +222,18 @@ describe('ring 1: err() shapes an error result', () => {
     const result = err('Gone.', 'Re-list.', 'STALE_REFERENCE');
     expect(result.structuredContent).toEqual({ code: 'STALE_REFERENCE' });
     expect(result.isError).toBe(true);
+  });
+
+  it('caps the complete serialized error result even when JSON escaping expands the message', () => {
+    const result = err('"\\'.repeat(CHARACTER_LIMIT), 'Retry.', 'SDK_REJECTED');
+
+    expect(serializedByteLength(result)).toBeLessThanOrEqual(CHARACTER_LIMIT);
+    expect(result.structuredContent?.code).toBe('SDK_REJECTED');
+    expect(result.structuredContent?._meta).toMatchObject({
+      loopholeResult: {
+        truncated: true,
+        reasons: ['serialized_size_limit'],
+      },
+    });
   });
 });

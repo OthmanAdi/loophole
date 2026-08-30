@@ -11,13 +11,13 @@
  * Two halves of the contract (02_BRIDGE_SPEC §7):
  *  - `ok(data, summary)` returns a human-readable `summary` as text AND the typed
  *    `data` as `structuredContent`, so a model reads prose while a programmatic
- *    client can consume JSON. The text is capped at the character limit.
+ *    client can consume JSON. The complete UTF-8 JSON envelope is size-capped.
  *  - `err(message, hint, code)` returns `isError: true` with the message plus a
  *    recovery hint, so a tool NEVER throws to the protocol; the model can
  *    self-correct in one turn.
  */
 
-import { truncate } from './truncate.js';
+import { boundedError, boundedSuccess } from './bounded-result.js';
 
 /** A single text content block, matching the MCP `TextContent` shape. */
 export interface TextBlock {
@@ -39,31 +39,15 @@ export interface ToolResult {
 }
 
 /**
- * Wrap a payload into the `structuredContent` object shape. An object passes
- * through; an array or scalar is nested under a `value` key so the result is
- * always a JSON object (never a bare array on the wire).
- */
-function toStructured(data: unknown): Record<string, unknown> {
-  if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
-    return data as Record<string, unknown>;
-  }
-  return { value: data };
-}
-
-/**
  * A successful tool result.
  *
  * @param data    the typed payload; surfaced as `structuredContent`.
  * @param summary an optional human-readable one-liner; when omitted, the JSON of
- *                `data` is used as the text. Either way the text is truncated at
- *                the character limit (02_BRIDGE_SPEC §8).
+ *                `data` is used as the text. The complete result, including
+ *                `structuredContent`, is bounded at the wire limit.
  */
 export function ok(data: unknown, summary?: string): ToolResult {
-  const text = summary ?? JSON.stringify(data);
-  return {
-    content: [{ type: 'text', text: truncate(text) }],
-    structuredContent: toStructured(data),
-  };
+  return boundedSuccess(data, summary);
 }
 
 /**
@@ -77,10 +61,5 @@ export function ok(data: unknown, summary?: string): ToolResult {
  *                surfaced in `structuredContent` so a client can branch on it.
  */
 export function err(message: string, hint?: string, code?: string): ToolResult {
-  const text = hint ? `${message}\nRecovery: ${hint}` : message;
-  const base: ToolResult = {
-    content: [{ type: 'text', text: truncate(text) }],
-    isError: true,
-  };
-  return code === undefined ? base : { ...base, structuredContent: { code } };
+  return boundedError(message, hint, code);
 }

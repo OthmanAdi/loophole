@@ -7,15 +7,15 @@
  *  - a thrown `BridgeError` of EACH of the five `BridgeErrorCode`s becomes an
  *    error result carrying that error's `message`, its recovery `hint`, and the
  *    `code` (surfaced in `structuredContent.code`);
- *  - a non-`BridgeError` throw becomes a generic `SDK_REJECTED` result with a
- *    fixed retry hint and the tool name in the message;
+ *  - a non-`BridgeError` throw becomes a generic correlated `SDK_REJECTED`
+ *    result, while its private details remain in the log;
  *  - a handler that resolves normally is passed through untouched.
  *
  * The bridge is never called here; a stub handler throws the value under test, so
  * this is a pure unit of the mapping.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   badInput,
   sdkRejected,
@@ -29,9 +29,14 @@ import {
 
 import { safeHandle } from '../result/safe-handle.js';
 import { ok, type ToolResult } from '../result/ok.js';
+import { log } from '../logging/logger.js';
 
 /** A stand-in bridge: never invoked, only needed to satisfy the handler signature. */
 const bridge = {} as LiveBridge;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 /** The concatenated text of a result's content blocks. */
 function text(result: ToolResult): string {
@@ -84,19 +89,36 @@ describe('ring 1: safeHandle maps each BridgeError code to its hint', () => {
 });
 
 describe('ring 1: safeHandle handles non-BridgeError throws and success', () => {
-  it('maps an arbitrary Error to a generic SDK_REJECTED result naming the tool', async () => {
+  it('maps an arbitrary Error to a generic correlated result without leaking internals', async () => {
+    const errorSpy = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const privateMessage = 'socket failed at C:\\Users\\developer\\Ableton\\bridge.ts:41';
     const guarded = safeHandle('live_render_track', () => {
-      throw new Error('socket hung up');
+      throw new Error(privateMessage);
     });
     const result = await guarded({}, bridge);
+    const clientText = text(result);
+    const correlationId = clientText.match(
+      /Reference: ([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/i,
+    )?.[1];
+
     expect(result.isError).toBe(true);
     expect(code(result)).toBe('SDK_REJECTED');
-    expect(text(result)).toContain('Unexpected failure in live_render_track');
-    expect(text(result)).toContain('socket hung up');
-    expect(text(result)).toContain('Retry once');
+    expect(clientText).toContain('Unexpected internal failure.');
+    expect(clientText).toContain('Retry once');
+    expect(clientText).not.toContain(privateMessage);
+    expect(clientText).not.toContain('live_render_track');
+    expect(correlationId).toBeDefined();
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        correlationId,
+        err: expect.objectContaining({ message: privateMessage }),
+      }),
+      'unexpected tool failure',
+    );
   });
 
-  it('maps a thrown non-Error value to SDK_REJECTED via String()', async () => {
+  it('maps a thrown non-Error value without reflecting it to the client', async () => {
+    const errorSpy = vi.spyOn(log, 'error').mockImplementation(() => undefined);
     const guarded = safeHandle('live_set_tempo', () => {
       // A non-Error throw (e.g. a string) must still be caught and shaped. The
       // bare-string throw is the behaviour under test, hence the scoped disable.
@@ -106,7 +128,8 @@ describe('ring 1: safeHandle handles non-BridgeError throws and success', () => 
     const result = await guarded({}, bridge);
     expect(result.isError).toBe(true);
     expect(code(result)).toBe('SDK_REJECTED');
-    expect(text(result)).toContain('raw string failure');
+    expect(text(result)).not.toContain('raw string failure');
+    expect(JSON.stringify(errorSpy.mock.calls)).toContain('raw string failure');
   });
 
   it('passes a successful result through unchanged', async () => {

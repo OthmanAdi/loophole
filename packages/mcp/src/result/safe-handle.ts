@@ -18,7 +18,9 @@
 
 import { isBridgeError, type LiveBridge } from '@othmanadi/loophole-core';
 
-import { asMessage, log, serializeError } from '../logging/logger.js';
+import { randomUUID } from 'node:crypto';
+
+import { log, serializeError } from '../logging/logger.js';
 import { err, type ToolResult } from './ok.js';
 
 /**
@@ -45,14 +47,19 @@ export function safeHandle<Args>(name: string, fn: ToolHandler<Args>): ToolHandl
     try {
       return await fn(args, bridge);
     } catch (error) {
-      log.error({ tool: name, err: serializeError(error) }, 'tool failed');
       if (isBridgeError(error)) {
+        log.error({ tool: name, err: serializeError(error) }, 'tool failed');
         // The BridgeError already carries the mapped recovery hint per its code.
         return err(error.message, error.hint, error.code);
       }
+      const correlationId = randomUUID();
+      log.error(
+        { tool: name, correlationId, err: serializeError(error) },
+        'unexpected tool failure',
+      );
       return err(
-        `Unexpected failure in ${name}: ${asMessage(error)}`,
-        'Retry once; if it persists, simplify the request.',
+        `Unexpected internal failure. Reference: ${correlationId}`,
+        'Retry once. If it persists, report the reference from this response.',
         'SDK_REJECTED',
       );
     }
