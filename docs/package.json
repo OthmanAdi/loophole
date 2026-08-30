@@ -15,18 +15,18 @@
     "dump-tools": "tsx scripts/dump-tools.ts"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.37.6",
-    "@mermaid-js/layout-elk": "^0.2.1",
-    "astro": "^5.17",
-    "astro-mermaid": "^2.0.2",
-    "mermaid": "^11.15.0",
-    "sharp": "^0.34.4",
-    "starlight-llms-txt": "0.7.0"
+    "@astrojs/starlight": "0.41.10",
+    "@mermaid-js/layout-elk": "^0.2.3",
+    "astro": "7.2.9",
+    "astro-mermaid": "^2.1.0",
+    "mermaid": "11.17.2",
+    "sharp": "0.35.4",
+    "starlight-llms-txt": "0.11.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "pino": "^10.3.1",
-    "tsx": "^4.22.4",
-    "zod": "^4.4.3"
+    "tsx": "^4.23.13",
+    "zod": "^4.5.4"
   }
 }
