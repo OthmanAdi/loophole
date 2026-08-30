@@ -104,6 +104,34 @@ export type {
   TrackId,
 } from './ids.js';
 
+// Opaque, session-scoped references. These are additive while callers migrate away
+// from positional path ids; the bounded registry contains no Node or SDK dependency.
+export {
+  isSessionReferenceOfKind,
+  makeSessionReference,
+  parseSessionReference,
+  SessionReferenceCollisionError,
+  SessionReferenceExhaustedError,
+  SessionReferenceParseError,
+  SessionReferenceRegistry,
+  tryParseSessionReference,
+} from './references.js';
+export type {
+  ClipReference,
+  ClipSlotReference,
+  CuePointReference,
+  DeviceReference,
+  ParameterReference,
+  ParsedSessionReference,
+  SceneReference,
+  SessionReference,
+  SessionReferenceKind,
+  SessionReferenceLookup,
+  SessionReferenceRegistryOptions,
+  SessionReferenceTokenFactory,
+  TrackReference,
+} from './references.js';
+
 // Typed error model + recovery hints.
 export {
   badInput,
