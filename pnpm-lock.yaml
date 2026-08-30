@@ -78,6 +78,9 @@ importers:
         specifier: ^4.5.4
         version: 4.5.4
     devDependencies:
+      '@othmanadi/loophole-core':
+        specifier: workspace:*
+        version: link:../core
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.15)(tsx@4.22.4)(typescript@5.9.3)
