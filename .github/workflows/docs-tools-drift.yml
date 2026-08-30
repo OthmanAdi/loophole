@@ -8,6 +8,12 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/docs-tools-drift.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'docs/package.json'
+      - 'docs/package-lock.json'
       - 'docs/scripts/dump-tools.ts'
       - 'docs/src/data/tools.json'
       - 'packages/mcp/**'
@@ -15,6 +21,12 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - '.github/workflows/docs-tools-drift.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'docs/package.json'
+      - 'docs/package-lock.json'
       - 'docs/scripts/dump-tools.ts'
       - 'docs/src/data/tools.json'
       - 'packages/mcp/**'
