@@ -42,6 +42,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { buildServer } from '@othmanadi/ableton-mcp';
 import { AbletonLiveBridge } from './adapter/live-bridge.ableton.js';
+import { ReferenceService } from './adapter/reference-service.js';
 import {
   checkBearer,
   checkHost,
@@ -76,13 +77,14 @@ const HTTP_NOT_FOUND = 404;
  */
 export function activate(activation: ActivationContext): void {
   const context = initialize(activation, API_VERSION);
-  const bridge = new AbletonLiveBridge(context);
+  const references = new ReferenceService(context);
+  const bridge = new AbletonLiveBridge(context, references);
 
   // Register the five context-menu commands first (they do not depend on the MCP
   // transport, so the extensions work even if the bridge fails to bind a port).
-  registerScaleLock(context, bridge);
-  registerHumanize(context, bridge);
-  registerGainStageDoctor(context, bridge);
+  registerScaleLock(context, bridge, references);
+  registerHumanize(context, bridge, references);
+  registerGainStageDoctor(context, bridge, references);
   registerSessionToSong(context, bridge);
   registerSetJanitor(context, bridge);
 

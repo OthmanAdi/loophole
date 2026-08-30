@@ -3,7 +3,7 @@
  * Ableton object model.
  *
  * This interface mirrors the SDK shape documented in API_REFERENCE.md but speaks
- * plain DTOs and stable string {@link PathId}s, never `Handle`/`bigint` and never
+ * plain DTOs and opaque session references, never `Handle`/`bigint` and never
  * an SDK type. Two implementations exist:
  *  - {@link FakeLiveBridge} (this package, for tests and the out-of-Live playground), and
  *  - `AbletonLiveBridge` (the extension shell). In the extension package the SDK is
@@ -230,7 +230,7 @@ export interface LiveBridge {
    * Create an empty MIDI clip on the Arrangement timeline of a track at `startBeat`
    * for `lengthBeats`, ready for {@link LiveBridge.setNotes}. Resolves to the new
    * clip's {@link ClipInfo} (its id is an indexed arrangement clip id,
-   * `track:N/clip:M`). Mirrors `MidiTrack.createMidiClip(startTime, duration)`
+   * an opaque clip reference. Mirrors `MidiTrack.createMidiClip(startTime, duration)`
    * (positional, beats). Backs Session-to-Song's MIDI placements.
    *
    * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if it is

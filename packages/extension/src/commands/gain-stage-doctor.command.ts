@@ -37,6 +37,7 @@ import {
   type TrackId,
 } from '@othmanadi/loophole-core';
 import { audioTrackSelectionToTargets, trackIdFromHandle } from '../adapter/selection.js';
+import { ReferenceService } from '../adapter/reference-service.js';
 import { AudioTrack } from '../adapter/selection.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
@@ -79,9 +80,13 @@ interface TrackRow {
  * @param api the live SDK context (also used to render pre-FX audio and read names).
  * @param bridge the real {@link LiveBridge} adapter.
  */
-export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
+export function register(
+  api: ExtensionContext<V>,
+  bridge: LiveBridge,
+  references: ReferenceService,
+): void {
   api.commands.registerCommand(COMMAND_ID, (...args: unknown[]) => {
-    void runCommand(LABEL, () => handle(api, bridge, args[0]));
+    void runCommand(LABEL, () => handle(api, bridge, references, args[0]));
   });
   void api.ui.registerContextMenuAction('AudioTrack', LABEL, COMMAND_ID);
   void api.ui.registerContextMenuAction('AudioTrack.ArrangementSelection', LABEL, COMMAND_ID);
@@ -92,8 +97,13 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
  * {@link runGainStageDoctor} over the chosen subset inside a progress dialog, and show
  * the measured rows afterwards.
  */
-async function handle(api: ExtensionContext<V>, bridge: LiveBridge, arg: unknown): Promise<void> {
-  const trackIds = resolveTrackIds(api, arg);
+async function handle(
+  api: ExtensionContext<V>,
+  bridge: LiveBridge,
+  references: ReferenceService,
+  arg: unknown,
+): Promise<void> {
+  const trackIds = resolveTrackIds(api, references, arg);
   if (trackIds.length === 0) {
     console.error('[loophole] Gain Stage: no audio track in the selection.');
     return;
@@ -139,13 +149,17 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge, arg: unknown
 }
 
 /** Turn the scope's argument into the list of audio track ids to stage. */
-function resolveTrackIds(api: ExtensionContext<V>, arg: unknown): TrackId[] {
+function resolveTrackIds(
+  api: ExtensionContext<V>,
+  references: ReferenceService,
+  arg: unknown,
+): TrackId[] {
   if (isArrangementSelection(arg)) {
-    return audioTrackSelectionToTargets(api, arg).trackIds;
+    return audioTrackSelectionToTargets(api, references, arg).trackIds;
   }
   // Single "AudioTrack" scope: a track Handle. Keep it only if it is an audio track.
   const handle = arg as Handle;
-  const id = trackIdFromHandle(api, handle);
+  const id = trackIdFromHandle(api, references, handle);
   if (id === null) {
     return [];
   }

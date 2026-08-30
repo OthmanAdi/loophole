@@ -30,6 +30,7 @@ import {
   type SnapMode,
 } from '@othmanadi/loophole-core';
 import { clipIdFromHandle, midiClipIdsFromSlotSelection } from '../adapter/selection.js';
+import { ReferenceService } from '../adapter/reference-service.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
 import { parseModalResult, runCommand } from './support.js';
@@ -77,9 +78,13 @@ interface ScaleLockModalData {
  * Register the Scale Lock command + its two context-menu actions. Called once from
  * `activate()` with the live SDK context and the real {@link LiveBridge} adapter.
  */
-export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
+export function register(
+  api: ExtensionContext<V>,
+  bridge: LiveBridge,
+  references: ReferenceService,
+): void {
   api.commands.registerCommand(COMMAND_ID, (...args: unknown[]) => {
-    void runCommand(LABEL, () => handle(api, bridge, args[0]));
+    void runCommand(LABEL, () => handle(api, bridge, references, args[0]));
   });
   void api.ui.registerContextMenuAction('MidiClip', LABEL, COMMAND_ID);
   void api.ui.registerContextMenuAction('ClipSlotSelection', LABEL, COMMAND_ID);
@@ -90,8 +95,13 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
  * count, and run {@link runScaleLock} on Apply. A single `"MidiClip"` scope passes a
  * `Handle`; the `"ClipSlotSelection"` scope passes a {@link ClipSlotSelection}.
  */
-async function handle(api: ExtensionContext<V>, bridge: LiveBridge, arg: unknown): Promise<void> {
-  const clipIds = resolveClipIds(api, arg);
+async function handle(
+  api: ExtensionContext<V>,
+  bridge: LiveBridge,
+  references: ReferenceService,
+  arg: unknown,
+): Promise<void> {
+  const clipIds = resolveClipIds(api, references, arg);
   if (clipIds.length === 0) {
     console.error('[loophole] Lock to Scale: no MIDI clip in the selection.');
     return;
@@ -110,12 +120,16 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge, arg: unknown
 }
 
 /** Turn the scope's argument into the list of MIDI clip ids to lock. */
-function resolveClipIds(api: ExtensionContext<V>, arg: unknown): ClipId[] {
+function resolveClipIds(
+  api: ExtensionContext<V>,
+  references: ReferenceService,
+  arg: unknown,
+): ClipId[] {
   if (isClipSlotSelection(arg)) {
-    return midiClipIdsFromSlotSelection(api, arg);
+    return midiClipIdsFromSlotSelection(api, references, arg);
   }
   // Otherwise a single clip Handle from the "MidiClip" scope.
-  const id = clipIdFromHandle(api, arg as Handle);
+  const id = clipIdFromHandle(api, references, arg as Handle);
   return id === null ? [] : [id];
 }
 

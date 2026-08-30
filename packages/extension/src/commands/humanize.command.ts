@@ -26,6 +26,7 @@ import {
   runHumanize,
 } from '@othmanadi/loophole-core';
 import { clipIdFromHandle, midiClipIdsFromSlotSelection } from '../adapter/selection.js';
+import { ReferenceService } from '../adapter/reference-service.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
 import { parseModalResult, runCommand } from './support.js';
@@ -63,10 +64,11 @@ type HumanizeModalResult = HumanizeModalApply | { readonly strength: null };
 export function register(
   api: ExtensionContext<V>,
   bridge: LiveBridge,
+  references: ReferenceService,
   rng: () => number = Math.random,
 ): void {
   api.commands.registerCommand(COMMAND_ID, (...args: unknown[]) => {
-    void runCommand(LABEL, () => handle(api, bridge, rng, args[0]));
+    void runCommand(LABEL, () => handle(api, bridge, references, rng, args[0]));
   });
   void api.ui.registerContextMenuAction('MidiClip', LABEL, COMMAND_ID);
   void api.ui.registerContextMenuAction('ClipSlotSelection', LABEL, COMMAND_ID);
@@ -75,10 +77,11 @@ export function register(
 async function handle(
   api: ExtensionContext<V>,
   bridge: LiveBridge,
+  references: ReferenceService,
   rng: () => number,
   arg: unknown,
 ): Promise<void> {
-  const clipIds = resolveClipIds(api, arg);
+  const clipIds = resolveClipIds(api, references, arg);
   if (clipIds.length === 0) {
     console.error('[loophole] Humanize: no MIDI clip in the selection.');
     return;
@@ -104,11 +107,15 @@ async function handle(
 }
 
 /** Turn the scope's argument into the list of MIDI clip ids to humanize. */
-function resolveClipIds(api: ExtensionContext<V>, arg: unknown): ClipId[] {
+function resolveClipIds(
+  api: ExtensionContext<V>,
+  references: ReferenceService,
+  arg: unknown,
+): ClipId[] {
   if (isClipSlotSelection(arg)) {
-    return midiClipIdsFromSlotSelection(api, arg);
+    return midiClipIdsFromSlotSelection(api, references, arg);
   }
-  const id = clipIdFromHandle(api, arg as Handle);
+  const id = clipIdFromHandle(api, references, arg as Handle);
   return id === null ? [] : [id];
 }
 

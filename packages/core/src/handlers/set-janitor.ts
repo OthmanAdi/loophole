@@ -1,25 +1,17 @@
 /**
- * Set Janitor (W6) command handler: read the whole Set through the {@link LiveBridge}
+ * Set Janitor command handler: read the whole Set through the {@link LiveBridge}
  * port, detect hygiene issues, plan fixes for the issues the user chose, and apply
- * them in a deterministic sequence that keeps position-based targets honest.
+ * them in a deterministic sequence that resolves each opaque target at write time.
  *
- * This is the ring-2 layer of 03_EXTENSIONS_SPEC §5: it imports only the port (DTOs +
- * string ids), never the SDK, so it runs against {@link FakeLiveBridge} with no
- * Ableton install. The intelligence is the pure {@link detectIssues} / {@link planFixes}
- * transforms; this file is the dumb read-map-write plumbing around them.
- *
- * The transaction shape is the mixed sync-setter + async-delete pattern §5(b)
- * prescribes: renames and recolors go through the bridge's `setTrackProps` /
- * `setClipProps` (each a sync setter under the hood), and deletes go through
- * `deleteTrack` / `deleteClip` (async). Value edits are grouped in one transaction.
- * Structural deletes then run serially: clips from highest to lowest index within a
- * track, followed by tracks from highest to lowest index. This prevents an earlier
- * splice from silently retargeting a later position-based id. Deletes fire only for
- * chosen delete-fixes.
+ * It imports only the bridge port and serializable domain types, never the host SDK.
+ * Renames and recolors are grouped in one transaction. Structural deletes then run
+ * serially in snapshot-derived order, and the bridge re-resolves each opaque
+ * reference immediately before mutation.
  */
 
+import { isPlayableClip } from '../dtos.js';
 import type { ClipInfo, Fix, SetClipDTO, SetDTO, SetTrackDTO, TrackInfo } from '../dtos.js';
-import { leafKind, parsePath, type PathSegment } from '../ids.js';
+import type { ClipId, TrackId } from '../ids.js';
 import type { LiveBridge } from '../live-bridge.js';
 import { detectIssues, planFixes } from '../transforms/janitor.js';
 
@@ -40,12 +32,16 @@ export interface SetJanitorResult {
  *
  * Carries `clip.endMarker` straight through, so the loop-overrun rule
  * ({@link detectIssues} comparing `endMarker > loopEnd`) fires through the bridge, not
- * only on hand-built ring-1 DTOs. `ClipInfo` surfaces `endMarker` (it mirrors the SDK's
- * read-only `Clip.endMarker` getter, 01_SDK_MAP §2), so this is a faithful read.
+ * only on hand-built DTOs. `ClipInfo` surfaces the read-only content end marker, so
+ * this is a faithful read.
  */
 function toSetClip(clip: ClipInfo): SetClipDTO {
+  if (!isPlayableClip(clip)) {
+    throw new Error('Empty Session slots must not reach Set Janitor clip transforms');
+  }
+  const id = clip.id;
   const base = {
-    id: clip.id,
+    id,
     name: clip.name,
     color: clip.color,
     looping: clip.looping,
@@ -70,7 +66,7 @@ function toSetTrack(track: TrackInfo, clips: readonly ClipInfo[]): SetTrackDTO {
     kind: track.kind,
     name: track.name,
     deviceCount: track.deviceCount,
-    clips: clips.filter((clip) => clip.kind !== 'empty').map(toSetClip),
+    clips: clips.filter(isPlayableClip).map(toSetClip),
   };
 }
 
@@ -85,66 +81,81 @@ function readSet(bridge: LiveBridge): SetDTO {
   };
 }
 
+interface ClipOrdinal {
+  readonly track: number;
+  readonly clip: number;
+}
+
+/** Build private ordering metadata from the same immutable snapshot used for detection. */
+function snapshotOrdinals(set: SetDTO): {
+  readonly tracks: ReadonlyMap<TrackId, number>;
+  readonly clips: ReadonlyMap<ClipId, ClipOrdinal>;
+} {
+  const tracks = new Map<TrackId, number>();
+  const clips = new Map<ClipId, ClipOrdinal>();
+
+  set.tracks.forEach((track, trackOrdinal) => {
+    tracks.set(track.id, trackOrdinal);
+    track.clips.forEach((clip, clipOrdinal) => {
+      clips.set(clip.id, { track: trackOrdinal, clip: clipOrdinal });
+    });
+  });
+
+  return { tracks, clips };
+}
+
+/**
+ * Order known clip targets by track ascending, then clip descending within a track.
+ * A target absent from the read snapshot stays after known targets and is still sent
+ * to the bridge, where its stale-reference error remains visible.
+ */
+function orderClipDeletes(
+  fixes: readonly Fix[],
+  ordinals: ReadonlyMap<ClipId, ClipOrdinal>,
+): Fix[] {
+  return [...fixes].sort((left, right) => {
+    const leftOrdinal = ordinals.get(left.target as ClipId);
+    const rightOrdinal = ordinals.get(right.target as ClipId);
+    if (leftOrdinal === undefined) return rightOrdinal === undefined ? 0 : 1;
+    if (rightOrdinal === undefined) return -1;
+    return leftOrdinal.track - rightOrdinal.track || rightOrdinal.clip - leftOrdinal.clip;
+  });
+}
+
+/** Order known track targets from highest to lowest snapshot ordinal. */
+function orderTrackDeletes(fixes: readonly Fix[], ordinals: ReadonlyMap<TrackId, number>): Fix[] {
+  return [...fixes].sort((left, right) => {
+    const leftOrdinal = ordinals.get(left.target as TrackId);
+    const rightOrdinal = ordinals.get(right.target as TrackId);
+    if (leftOrdinal === undefined) return rightOrdinal === undefined ? 0 : 1;
+    if (rightOrdinal === undefined) return -1;
+    return rightOrdinal - leftOrdinal;
+  });
+}
+
 /**
  * Issue the one bridge mutation that applies a single {@link Fix}, returning its
  * Promise so the caller can await it in the appropriate mutation phase.
  * A `rename` can target a track or a clip, so it dispatches on the target's leaf kind
  * (`setTrackProps` vs `setClipProps`); a `recolor` only ever comes from a clip's
  * off-palette issue, so it routes straight to `setClipProps`; deletes route to
- * `deleteTrack` / `deleteClip`. Every id alias (`TrackId` / `ClipId`) is a `PathId`,
- * so the port methods take `fix.target` directly.
+ * `deleteTrack` / `deleteClip` using the explicit `targetKind` metadata.
  */
 function applyFix(bridge: LiveBridge, fix: Fix): Promise<unknown> {
   switch (fix.kind) {
     case 'rename': {
       const name = fix.name ?? '';
-      return leafKind(fix.target) === 'track'
-        ? bridge.setTrackProps(fix.target, { name })
-        : bridge.setClipProps(fix.target, { name });
+      return fix.targetKind === 'track'
+        ? bridge.setTrackProps(fix.target as TrackId, { name })
+        : bridge.setClipProps(fix.target as ClipId, { name });
     }
     case 'recolor':
-      return bridge.setClipProps(fix.target, { color: fix.color ?? 0 });
+      return bridge.setClipProps(fix.target as ClipId, { color: fix.color ?? 0 });
     case 'deleteTrack':
-      return bridge.deleteTrack(fix.target);
+      return bridge.deleteTrack(fix.target as TrackId);
     case 'deleteClip':
-      return bridge.deleteClip(fix.target);
+      return bridge.deleteClip(fix.target as ClipId);
   }
-}
-
-/** Return the numeric index carried by a parsed path segment, or fail loudly. */
-function segmentIndex(segment: PathSegment | undefined, target: Fix['target']): number {
-  if (segment === undefined || !('index' in segment)) {
-    throw new TypeError(`Structural fix target "${target}" has no sortable index.`);
-  }
-  return segment.index;
-}
-
-/**
- * Sort clip deletes without mutating the planner's output. Tracks are visited in
- * stable ascending order; inside each track, higher slot/Arrangement indices are
- * deleted first so an Arrangement-array splice cannot shift a later target.
- */
-function orderClipDeletes(fixes: readonly Fix[]): Fix[] {
-  return [...fixes].sort((left, right) => {
-    const leftPath = parsePath(left.target);
-    const rightPath = parsePath(right.target);
-    const trackOrder =
-      segmentIndex(leftPath[0], left.target) - segmentIndex(rightPath[0], right.target);
-    if (trackOrder !== 0) {
-      return trackOrder;
-    }
-
-    return segmentIndex(rightPath[1], right.target) - segmentIndex(leftPath[1], left.target);
-  });
-}
-
-/** Sort track deletes from highest to lowest position so earlier splices stay safe. */
-function orderTrackDeletes(fixes: readonly Fix[]): Fix[] {
-  return [...fixes].sort(
-    (left, right) =>
-      segmentIndex(parsePath(right.target)[0], right.target) -
-      segmentIndex(parsePath(left.target)[0], left.target),
-  );
 }
 
 /**
@@ -153,12 +164,11 @@ function orderTrackDeletes(fixes: readonly Fix[]): Fix[] {
  * of fixes applied after every phase succeeds.
  *
  * Non-structural renames/recolors share one {@link LiveBridge.transaction}. Clip
- * deletes then run serially, descending within each track, and track deletes run
- * serially in descending track order. Structural operations therefore each create
- * their own undo step. This intentionally trades a single sweep-wide undo for safe,
- * deterministic position-based deletion. If a delete rejects as stale, the error is
- * propagated and later deletes are not attempted; earlier completed phases remain
- * applied and undoable. When no chosen issue yields a fix, the sweep resolves
+ * deletes then run serially by snapshot order: tracks ascending, clips descending
+ * within a track. Track deletes follow in descending snapshot order. Structural
+ * operations each create their own undo step. If a delete rejects as stale, the
+ * error is propagated and later deletes are not attempted; earlier completed phases
+ * remain applied and undoable. When no chosen issue yields a fix, the sweep resolves
  * `{ applied: 0 }` without opening a transaction.
  *
  * @param bridge the {@link LiveBridge} port (real adapter in Live, fake in tests).
@@ -169,6 +179,7 @@ export async function runSetJanitor(
   args: SetJanitorArgs,
 ): Promise<SetJanitorResult> {
   const set = readSet(bridge);
+  const ordinals = snapshotOrdinals(set);
   const issues = detectIssues(set);
   const fixes = planFixes(issues, args.chosenIssueIds);
 
@@ -178,8 +189,14 @@ export async function runSetJanitor(
   }
 
   const valueFixes = fixes.filter((fix) => fix.kind === 'rename' || fix.kind === 'recolor');
-  const clipDeletes = orderClipDeletes(fixes.filter((fix) => fix.kind === 'deleteClip'));
-  const trackDeletes = orderTrackDeletes(fixes.filter((fix) => fix.kind === 'deleteTrack'));
+  const clipDeletes = orderClipDeletes(
+    fixes.filter((fix) => fix.kind === 'deleteClip'),
+    ordinals.clips,
+  );
+  const trackDeletes = orderTrackDeletes(
+    fixes.filter((fix) => fix.kind === 'deleteTrack'),
+    ordinals.tracks,
+  );
 
   if (valueFixes.length > 0) {
     await bridge.transaction(() => Promise.all(valueFixes.map((fix) => applyFix(bridge, fix))));

@@ -9,13 +9,13 @@
 
 import { z } from 'zod';
 
-import { makePathId, type NoteDTO } from '@othmanadi/loophole-core';
+import type { NoteDTO } from '@othmanadi/loophole-core';
 
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { ClipId } from '../../schemas/primitives.js';
+import { ClipReference } from '../../schemas/primitives.js';
 
-const inputSchema = z.object({ clipId: ClipId }).strict();
+const inputSchema = z.object({ clipId: ClipReference }).strict();
 
 /** Above this many notes, summarize instead of dumping the full array. */
 const NOTE_DUMP_LIMIT = 400;
@@ -44,9 +44,9 @@ export const getNotesTool = defineTool({
   name: 'live_get_notes',
   title: 'Get notes',
   description:
-    'Read all MIDI notes from one clip as plain note objects (pitch, startTime, duration, and ' +
+    'Read all MIDI notes from one clip reference as plain note objects (pitch, startTime, duration, and ' +
     'optional velocity / muted / probability). For a very large clip, returns a summary (count, ' +
-    'pitch range, beat span, first notes) plus a hint instead of a full dump. The clip id must ' +
+    'pitch range, beat span, first notes) plus a hint instead of a full dump. The clip reference must ' +
     'be a MIDI clip from live_list_clips.',
   inputSchema,
   annotations: {
@@ -56,7 +56,7 @@ export const getNotesTool = defineTool({
     openWorldHint: false,
   },
   handle: (args, bridge) => {
-    const clipId = makePathId(args.clipId);
+    const clipId = args.clipId;
     const notes = bridge.getNotes(clipId);
     if (notes.length <= NOTE_DUMP_LIMIT) {
       const data = { clipId, count: notes.length, notes };

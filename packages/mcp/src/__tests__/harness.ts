@@ -72,7 +72,7 @@ export function resultCode(result: ToolCallResult): unknown {
  * Assert that a serialized value carries NO forbidden host shape: no `bigint`
  * anywhere, and no property named `handle` or `id` whose value looks like a raw
  * SDK handle (`{ id: <number|bigint> }`). The bridge's public address is a string
- * path id (e.g. `"track:2"`), never a `Handle` and never a `bigint`; this guards
+ * opaque session reference, never a `Handle` and never a `bigint`; this guards
  * the serialization boundary (02_BRIDGE_SPEC §3, §8).
  *
  * Throws with a descriptive message on the first violation; returns silently when
@@ -96,20 +96,51 @@ export function assertNoForbiddenShapes(value: unknown, path = '$'): void {
     return;
   }
   const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (/locator|fingerprint/i.test(key)) {
+      throw new Error(`Forbidden locator/fingerprint field on the wire at ${path}.${key}`);
+    }
+  }
   // A property literally named `handle` is the SDK reference type and must never
-  // be serialized; ids are carried as the string path-id, not a `handle`.
+  // be serialized; ids are carried as opaque string references, not a `handle`.
   if ('handle' in record) {
     throw new Error(`Forbidden "handle" property on the wire at ${path}.handle`);
   }
-  // An `id` field must be a STRING path id, never a numeric/bigint host id.
-  if ('id' in record) {
-    const id = record['id'];
-    if (typeof id === 'number' || typeof id === 'bigint') {
-      throw new Error(`Forbidden numeric id on the wire at ${path}.id (= ${String(id)})`);
+  for (const key of REFERENCE_FIELD_NAMES) {
+    if (key in record) {
+      assertOpaqueReference(record[key], `${path}.${key}`);
     }
   }
   for (const [key, child] of Object.entries(record)) {
     assertNoForbiddenShapes(child, `${path}.${key}`);
+  }
+}
+
+const REFERENCE_FIELD_NAMES = new Set([
+  'id',
+  'trackId',
+  'sceneId',
+  'cuePointId',
+  'clipSlotId',
+  'slotId',
+  'clipId',
+  'deviceId',
+  'paramId',
+  'parameterId',
+]);
+
+const OPAQUE_REFERENCE_PATTERN = /^lhref_(trk|scn|cue|slot|clip|dev|param)_[A-Za-z0-9_-]{16,128}$/;
+
+/** Validate all object-reference fields while leaving numeric domain metadata intact. */
+function assertOpaqueReference(value: unknown, path: string): void {
+  if (typeof value !== 'string') {
+    if (typeof value === 'number' || typeof value === 'bigint') {
+      throw new Error(`Forbidden numeric id/reference at ${path} (= ${String(value)})`);
+    }
+    throw new Error(`Forbidden non-string reference at ${path}`);
+  }
+  if (!OPAQUE_REFERENCE_PATTERN.test(value)) {
+    throw new Error(`Forbidden malformed or positional reference at ${path}`);
   }
 }
 

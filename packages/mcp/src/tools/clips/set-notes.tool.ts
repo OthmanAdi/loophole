@@ -9,15 +9,15 @@
 
 import { z } from 'zod';
 
-import { makePathId, type NoteDTO } from '@othmanadi/loophole-core';
+import type { NoteDTO } from '@othmanadi/loophole-core';
 
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { ClipId, NoteSchema } from '../../schemas/primitives.js';
+import { ClipReference, NoteSchema } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
-    clipId: ClipId,
+    clipId: ClipReference,
     notes: z.array(NoteSchema).describe('Full replacement set of notes for the clip'),
   })
   .strict();
@@ -26,9 +26,9 @@ export const setNotesTool = defineTool({
   name: 'live_set_notes',
   title: 'Set notes',
   description:
-    'Replace ALL MIDI notes in one clip with the given array (whole-array assign-back: read with ' +
+    'Replace ALL MIDI notes in one clip reference with the given array (whole-array assign-back: read with ' +
     'live_get_notes, transform, write back). One undo step. Pitch and velocity are clamped to ' +
-    '0-127. The clip id must be a MIDI clip. Returns the clip id, name, and resulting note count.',
+    '0-127. The clip reference must be a MIDI clip. Returns the clip reference, name, and resulting note count.',
   inputSchema,
   annotations: {
     readOnlyHint: false,
@@ -42,7 +42,7 @@ export const setNotesTool = defineTool({
     // `T | undefined`, but core's NoteDTO omits absent keys (exactOptionalPropertyTypes).
     // The runtime values are sound (JSON never carries `undefined`, and core's
     // noteFromDTO gates every optional), so this only strips a pessimistic type.
-    const result = await bridge.setNotes(makePathId(args.clipId), args.notes as readonly NoteDTO[]);
-    return ok(result, `Wrote ${String(result.count)} notes to ${result.name}.`);
+    const result = await bridge.setNotes(args.clipId, args.notes as readonly NoteDTO[]);
+    return ok(result, `Wrote ${String(result.count)} notes to the referenced clip.`);
   },
 });

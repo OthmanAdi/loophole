@@ -9,15 +9,15 @@
 
 import { z } from 'zod';
 
-import { makePathId, type TrackPropsPatch } from '@othmanadi/loophole-core';
+import type { TrackPropsPatch } from '@othmanadi/loophole-core';
 
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { TrackId } from '../../schemas/primitives.js';
+import { TrackReference } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
-    trackId: TrackId,
+    trackId: TrackReference,
     props: z
       .object({
         name: z.string().min(1).optional().describe('New track name'),
@@ -34,9 +34,9 @@ export const setTrackPropsTool = defineTool({
   name: 'live_set_track_props',
   title: 'Set track properties',
   description:
-    "Set a track's name, mute, solo, and / or arm in ONE undo step. Provide at least one " +
+    "Set a current track reference's name, mute, solo, and / or arm in ONE undo step. Provide at least one " +
     'property; only the given keys are written. Returns the post-write track state. Use the ' +
-    'track id from live_find_track or live_get_song_overview.',
+    'track reference from live_find_track or live_get_song_overview.',
   inputSchema,
   annotations: {
     readOnlyHint: false,
@@ -47,10 +47,7 @@ export const setTrackPropsTool = defineTool({
   handle: async (args, bridge) => {
     // Cast as for set-notes: Zod's optional fields are `T | undefined`, core's
     // TrackPropsPatch omits absent keys; the runtime value is a sound subset.
-    const track = await bridge.setTrackProps(
-      makePathId(args.trackId),
-      args.props as TrackPropsPatch,
-    );
+    const track = await bridge.setTrackProps(args.trackId, args.props as TrackPropsPatch);
     const data = {
       id: track.id,
       name: track.name,
@@ -58,6 +55,6 @@ export const setTrackPropsTool = defineTool({
       solo: track.solo,
       arm: track.arm,
     };
-    return ok(data, `Updated ${track.name} (${track.id}).`);
+    return ok(data, 'Updated the referenced track.');
   },
 });

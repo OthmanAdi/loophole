@@ -1,5 +1,5 @@
 /**
- * Command handler for Session-to-Song Builder (W5, the flagship).
+ * Command handler for Session-to-Song Builder.
  *
  * This is the I/O half that wraps the pure {@link planArrangement}: it READS the
  * Session through the {@link LiveBridge} port (scenes, then each track's clips, then
@@ -8,9 +8,8 @@
  * ONE {@link LiveBridge.transaction} so the entire build is a single undo.
  *
  * It imports no SDK and speaks only the existing core port + DTOs, so it runs
- * unchanged against {@link import('../fake-live-bridge.js').FakeLiveBridge} (ring 2)
- * and against the real `AbletonLiveBridge` (ring 3). The transaction shape mirrors
- * 03_EXTENSIONS_SPEC §4(b): a synchronous callback that returns `Promise.all([...])`
+ * unchanged against {@link import('../fake-live-bridge.js').FakeLiveBridge} and
+ * against the real `AbletonLiveBridge`. The transaction callback returns `Promise.all([...])`
  * of the range clears, the per-placement create-then-populate helpers, and the
  * cue-point creates. Never `await` inside the callback; each placement helper does
  * its own awaiting and is collected into the one `Promise.all`.
@@ -22,12 +21,15 @@
  * leaves the freshly created clips in place.
  */
 
-import type { ClipId, ClipSlotId, TrackId } from '../ids.js';
-import { parsePath } from '../ids.js';
+import type { ClipId, SceneId, TrackId } from '../ids.js';
+import { isPlayableClip } from '../dtos.js';
+import { badInput, staleReference } from '../errors.js';
 import type {
   ClipInfo,
+  PopulatedClipInfo,
   Placement,
   PlanResult,
+  ResolvedSection,
   SceneDTO,
   Section,
   SessionClipDTO,
@@ -47,31 +49,40 @@ export interface SessionToSongResult {
 
 /** The arguments {@link runSessionToSong} takes (the section map + the fallback time signature). */
 export interface SessionToSongArgs {
-  /** The user's ordered section list (name, scene, bars, optional color). */
+  /** The user's ordered section list, bound to opaque scene references. */
   readonly sectionMap: readonly Section[];
   /** Fallback time signature for sections whose scene does not report one (callers pass 4/4). */
   readonly timeSig: TimeSig;
 }
 
 /**
- * The scene index a Session clip belongs to, derived from its clip-slot id.
+ * Resolve the modal's open-time scene references against the current scene order.
  *
- * In the Session view a track's clip slots line up with the scenes (slot M is on
- * scene M), so the slot index IS the scene index. The bridge reports each Session
- * clip with its `slotId` (`track:N/clipslot:M`); this reads `M` back out. Returns
- * `null` when there is no slot id or the id does not carry a clip-slot segment, so
- * the caller can skip non-Session entries cleanly.
+ * A scene may move while the modal is open, so its former numeric position is never
+ * trusted. A missing reference is a typed stale-reference failure before the handler
+ * reads clips or opens a transaction. The returned index is planning-only and cannot
+ * be supplied by a caller alongside a conflicting reference.
  */
-function sceneIndexFromSlot(slotId: ClipSlotId | undefined): number | null {
-  if (slotId === undefined) {
-    return null;
-  }
-  const segments = parsePath(slotId);
-  const slotSegment = segments[1];
-  if (slotSegment === undefined || slotSegment.kind !== 'clipslot' || !('index' in slotSegment)) {
-    return null;
-  }
-  return slotSegment.index;
+function resolveSections(
+  bridge: LiveBridge,
+  sectionMap: readonly Section[],
+): readonly ResolvedSection[] {
+  const currentScenes = bridge.listScenes();
+  const currentIndexByRef = new Map<SceneId, number>(
+    currentScenes.map((scene, index) => [scene.id, index]),
+  );
+
+  return sectionMap.map((section) => {
+    const sceneIndex = currentIndexByRef.get(section.sceneRef);
+    if (sceneIndex === undefined) {
+      throw staleReference(
+        section.sceneRef,
+        'A selected Session scene changed or was deleted while the dialog was open. Re-list scenes and retry.',
+      );
+    }
+    const base = { name: section.name, sceneIndex, bars: section.bars };
+    return section.color === undefined ? base : { ...base, color: section.color };
+  });
 }
 
 /**
@@ -111,14 +122,16 @@ function readSession(bridge: LiveBridge): SessionDTO {
   const clips: SessionClipDTO[] = [];
   tracks.forEach((track, trackIndex) => {
     for (const entry of bridge.listClips(track.id)) {
-      if (entry.kind === 'empty' || entry.location !== 'session') {
+      if (!isPlayableClip(entry) || entry.location !== 'session') {
         continue;
       }
-      const sceneIndex = sceneIndexFromSlot(entry.slotId);
-      if (sceneIndex === null) {
-        continue;
+      if (entry.slotId === undefined || entry.sceneIndex === undefined) {
+        throw badInput(
+          'Bridge returned a populated Session clip without its slot reference or scene index.',
+          'Re-list Session clips with a bridge that supplies slotId and sceneIndex before building.',
+        );
       }
-      clips.push(sessionClipFromInfo(bridge, entry, trackIndex, sceneIndex));
+      clips.push(sessionClipFromInfo(bridge, entry, trackIndex, entry.sceneIndex));
     }
   });
 
@@ -132,12 +145,13 @@ function readSession(bridge: LiveBridge): SessionDTO {
 /** Build one {@link SessionClipDTO} from a listed Session {@link ClipInfo}. */
 function sessionClipFromInfo(
   bridge: LiveBridge,
-  entry: ClipInfo,
+  entry: PopulatedClipInfo,
   trackIndex: number,
   sceneIndex: number,
 ): SessionClipDTO {
+  const clipRef = entry.id;
   const base = {
-    clipRef: entry.id,
+    clipRef,
     trackIndex,
     sceneIndex,
     isMidi: entry.isMidi,
@@ -147,7 +161,7 @@ function sessionClipFromInfo(
   };
   if (entry.isMidi) {
     // MIDI source: carry the notes so the placement can repopulate the recreated clip.
-    return { ...base, notes: bridge.getNotes(entry.id) };
+    return { ...base, notes: bridge.getNotes(clipRef) };
   }
   // Audio source: carry the file path so the placement can reference it by file.
   // Omit `filePath` if the bridge did not report one (exactOptionalPropertyTypes).
@@ -170,8 +184,11 @@ export async function runSessionToSong(
   bridge: LiveBridge,
   args: SessionToSongArgs,
 ): Promise<SessionToSongResult> {
+  // Resolve selected scene identity before every read that might lead to a write. This
+  // both fails closed on deletion and follows a reordered scene to its current index.
+  const resolvedSections = resolveSections(bridge, args.sectionMap);
   const session = readSession(bridge);
-  const plan = planArrangement(session, args.sectionMap, args.timeSig);
+  const plan = planArrangement(session, resolvedSections, args.timeSig);
 
   // A no-op plan (an empty section map yields no placements and no cue points) commits
   // no transaction: a user action that builds nothing leaves no undo step, matching the
@@ -258,10 +275,11 @@ async function placeClip(
       placement.startBeat,
       placement.durationBeats,
     );
+    const created = requirePlayableClip(clip);
     if (source?.notes !== undefined && source.notes.length > 0) {
-      await bridge.setNotes(clip.id, source.notes);
+      await bridge.setNotes(created.id, source.notes);
     }
-    await applyClipProps(bridge, clip.id, placement);
+    await applyClipProps(bridge, created.id, placement);
     return;
   }
   // Audio placement: reference the source file. A source with no filePath cannot be
@@ -274,7 +292,14 @@ async function placeClip(
     startTime: placement.startBeat,
     duration: placement.durationBeats,
   });
-  await applyClipProps(bridge, clip.id, placement);
+  await applyClipProps(bridge, requirePlayableClip(clip).id, placement);
+}
+
+function requirePlayableClip(clip: ClipInfo): PopulatedClipInfo {
+  if (!isPlayableClip(clip)) {
+    throw new Error('Bridge returned an empty slot for an Arrangement clip create');
+  }
+  return clip;
 }
 
 /**

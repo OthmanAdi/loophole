@@ -25,8 +25,17 @@ import type { ToolModule } from '../tools/registry.js';
 /** A valid argument sample plus the malformed samples the schema must reject. */
 interface ToolInputCase {
   readonly valid: unknown;
-  readonly invalid: readonly { readonly label: string; readonly args: unknown }[];
+  readonly invalid: readonly {
+    readonly label: string;
+    readonly args: unknown;
+    readonly expectedPath?: readonly (string | number)[];
+  }[];
 }
+
+const TRACK_REFERENCE = 'lhref_trk_0123456789abcdef';
+const CLIP_REFERENCE = 'lhref_clip_0123456789abcdef';
+const CLIP_SLOT_REFERENCE = 'lhref_slot_0123456789abcdef';
+const PARAMETER_REFERENCE = 'lhref_param_0123456789abcdef';
 
 /**
  * One case per tool, keyed by tool name. Every tool in `collectTools()` must have
@@ -49,19 +58,21 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
     ],
   },
   live_list_clips: {
-    valid: { trackId: 'track:2' },
+    valid: { trackId: TRACK_REFERENCE },
     invalid: [
       { label: 'an empty trackId', args: { trackId: '' } },
       { label: 'a non-string trackId', args: { trackId: 2 } },
+      { label: 'a legacy positional trackId', args: { trackId: 'track:0' } },
       { label: 'a missing trackId', args: {} },
     ],
   },
   live_get_notes: {
-    valid: { clipId: 'track:2/clipslot:4/clip' },
+    valid: { clipId: CLIP_REFERENCE },
     invalid: [
       { label: 'an empty clipId', args: { clipId: '' } },
       { label: 'a missing clipId', args: {} },
-      { label: 'an unknown key (strict)', args: { clipId: 'track:0/clipslot:0/clip', n: 1 } },
+      { label: 'a legacy positional clipId', args: { clipId: 'track:0/clipslot:0/clip' } },
+      { label: 'an unknown key (strict)', args: { clipId: CLIP_REFERENCE, n: 1 } },
     ],
   },
   // --- writes ---
@@ -76,64 +87,78 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
     ],
   },
   live_set_track_props: {
-    valid: { trackId: 'track:0', props: { name: 'Kit', mute: true } },
+    valid: { trackId: TRACK_REFERENCE, props: { name: 'Kit', mute: true } },
     invalid: [
-      { label: 'an empty props object (refine)', args: { trackId: 'track:0', props: {} } },
+      {
+        label: 'an empty props object (refine)',
+        args: { trackId: TRACK_REFERENCE, props: {} },
+        expectedPath: ['props'],
+      },
       {
         label: 'an empty name string',
-        args: { trackId: 'track:0', props: { name: '' } },
+        args: { trackId: TRACK_REFERENCE, props: { name: '' } },
+        expectedPath: ['props', 'name'],
       },
       {
         label: 'a non-boolean mute',
-        args: { trackId: 'track:0', props: { mute: 'yes' } },
+        args: { trackId: TRACK_REFERENCE, props: { mute: 'yes' } },
+        expectedPath: ['props', 'mute'],
       },
       {
         label: 'an unknown prop key (strict)',
-        args: { trackId: 'track:0', props: { color: 1 } },
+        args: { trackId: TRACK_REFERENCE, props: { color: 1 } },
       },
-      { label: 'a missing props', args: { trackId: 'track:0' } },
+      { label: 'a missing props', args: { trackId: TRACK_REFERENCE }, expectedPath: ['props'] },
     ],
   },
   live_set_notes: {
-    valid: { clipId: 'track:0/clipslot:0/clip', notes: [{ pitch: 60, startTime: 0, duration: 1 }] },
+    valid: { clipId: CLIP_REFERENCE, notes: [{ pitch: 60, startTime: 0, duration: 1 }] },
     invalid: [
       {
         label: 'a note pitch above 127',
         args: {
-          clipId: 'track:0/clipslot:0/clip',
+          clipId: CLIP_REFERENCE,
           notes: [{ pitch: 200, startTime: 0, duration: 1 }],
         },
+        expectedPath: ['notes', 0, 'pitch'],
       },
       {
         label: 'a negative note pitch',
         args: {
-          clipId: 'track:0/clipslot:0/clip',
+          clipId: CLIP_REFERENCE,
           notes: [{ pitch: -1, startTime: 0, duration: 1 }],
         },
+        expectedPath: ['notes', 0, 'pitch'],
       },
       {
         label: 'a non-integer pitch',
         args: {
-          clipId: 'track:0/clipslot:0/clip',
+          clipId: CLIP_REFERENCE,
           notes: [{ pitch: 60.5, startTime: 0, duration: 1 }],
         },
+        expectedPath: ['notes', 0, 'pitch'],
       },
       {
         label: 'a negative startTime (beats)',
         args: {
-          clipId: 'track:0/clipslot:0/clip',
+          clipId: CLIP_REFERENCE,
           notes: [{ pitch: 60, startTime: -1, duration: 1 }],
         },
+        expectedPath: ['notes', 0, 'startTime'],
       },
       {
         label: 'an unknown note key (strict NoteSchema)',
         args: {
-          clipId: 'track:0/clipslot:0/clip',
+          clipId: CLIP_REFERENCE,
           notes: [{ pitch: 60, startTime: 0, duration: 1, channel: 1 }],
         },
       },
-      { label: 'a non-array notes', args: { clipId: 'track:0/clipslot:0/clip', notes: {} } },
-      { label: 'a missing notes', args: { clipId: 'track:0/clipslot:0/clip' } },
+      {
+        label: 'a non-array notes',
+        args: { clipId: CLIP_REFERENCE, notes: {} },
+        expectedPath: ['notes'],
+      },
+      { label: 'a missing notes', args: { clipId: CLIP_REFERENCE }, expectedPath: ['notes'] },
     ],
   },
   live_create_track: {
@@ -145,66 +170,100 @@ const CASES: Readonly<Record<string, ToolInputCase>> = {
     ],
   },
   live_create_midi_clip: {
-    valid: { slotId: 'track:0/clipslot:1', lengthBeats: 4 },
+    valid: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: 4 },
     invalid: [
       {
         label: 'a length below the 0.25 minimum',
-        args: { slotId: 'track:0/clipslot:1', lengthBeats: 0.1 },
+        args: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: 0.1 },
+        expectedPath: ['lengthBeats'],
       },
       {
         label: 'a non-numeric length',
-        args: { slotId: 'track:0/clipslot:1', lengthBeats: 'four' },
+        args: { slotId: CLIP_SLOT_REFERENCE, lengthBeats: 'four' },
+        expectedPath: ['lengthBeats'],
       },
       { label: 'an empty slotId', args: { slotId: '', lengthBeats: 4 } },
-      { label: 'a missing lengthBeats', args: { slotId: 'track:0/clipslot:1' } },
+      {
+        label: 'a legacy positional slotId',
+        args: { slotId: 'track:0/clipslot:1', lengthBeats: 4 },
+      },
+      {
+        label: 'a missing lengthBeats',
+        args: { slotId: CLIP_SLOT_REFERENCE },
+        expectedPath: ['lengthBeats'],
+      },
     ],
   },
   live_set_param: {
-    valid: { paramId: 'track:2/device:0/param:0', value: 1000 },
+    valid: { paramId: PARAMETER_REFERENCE, value: 1000 },
     invalid: [
       {
         label: 'a non-numeric value',
-        args: { paramId: 'track:2/device:0/param:0', value: 'loud' },
+        args: { paramId: PARAMETER_REFERENCE, value: 'loud' },
+        expectedPath: ['value'],
       },
       { label: 'an empty paramId', args: { paramId: '', value: 1 } },
-      { label: 'a missing value', args: { paramId: 'track:2/device:0/param:0' } },
+      {
+        label: 'a legacy positional paramId',
+        args: { paramId: 'track:2/device:0/param:0', value: 1 },
+      },
+      { label: 'a missing value', args: { paramId: PARAMETER_REFERENCE }, expectedPath: ['value'] },
       {
         label: 'an unknown key (strict)',
-        args: { paramId: 'track:2/device:0/param:0', value: 1, unit: 'hz' },
+        args: { paramId: PARAMETER_REFERENCE, value: 1, unit: 'hz' },
       },
     ],
   },
   live_insert_device: {
-    valid: { trackId: 'track:1', deviceName: 'Reverb', index: 0 },
+    valid: { trackId: TRACK_REFERENCE, deviceName: 'Reverb', index: 0 },
     invalid: [
       {
         label: 'a negative chain index',
-        args: { trackId: 'track:1', deviceName: 'Reverb', index: -1 },
+        args: { trackId: TRACK_REFERENCE, deviceName: 'Reverb', index: -1 },
+        expectedPath: ['index'],
       },
       {
         label: 'a non-integer index',
-        args: { trackId: 'track:1', deviceName: 'Reverb', index: 1.5 },
+        args: { trackId: TRACK_REFERENCE, deviceName: 'Reverb', index: 1.5 },
+        expectedPath: ['index'],
       },
-      { label: 'an empty deviceName', args: { trackId: 'track:1', deviceName: '', index: 0 } },
-      { label: 'a missing index', args: { trackId: 'track:1', deviceName: 'Reverb' } },
+      {
+        label: 'an empty deviceName',
+        args: { trackId: TRACK_REFERENCE, deviceName: '', index: 0 },
+        expectedPath: ['deviceName'],
+      },
+      {
+        label: 'a missing index',
+        args: { trackId: TRACK_REFERENCE, deviceName: 'Reverb' },
+        expectedPath: ['index'],
+      },
     ],
   },
   live_render_track: {
-    valid: { trackId: 'track:2', startBeat: 0, endBeat: 8 },
+    valid: { trackId: TRACK_REFERENCE, startBeat: 0, endBeat: 8 },
     invalid: [
       {
         label: 'an endBeat equal to startBeat (refine)',
-        args: { trackId: 'track:2', startBeat: 4, endBeat: 4 },
+        args: { trackId: TRACK_REFERENCE, startBeat: 4, endBeat: 4 },
       },
       {
         label: 'an endBeat below startBeat (refine)',
-        args: { trackId: 'track:2', startBeat: 8, endBeat: 4 },
+        args: { trackId: TRACK_REFERENCE, startBeat: 8, endBeat: 4 },
       },
       {
         label: 'a negative startBeat',
-        args: { trackId: 'track:2', startBeat: -1, endBeat: 8 },
+        args: { trackId: TRACK_REFERENCE, startBeat: -1, endBeat: 8 },
+        expectedPath: ['startBeat'],
       },
-      { label: 'a missing endBeat', args: { trackId: 'track:2', startBeat: 0 } },
+      {
+        label: 'a legacy positional trackId',
+        args: { trackId: 'track:2', startBeat: 0, endBeat: 8 },
+      },
+      {
+        label: 'a missing endBeat',
+        args: { trackId: TRACK_REFERENCE, startBeat: 0 },
+        expectedPath: ['endBeat'],
+      },
     ],
   },
 };
@@ -231,7 +290,7 @@ describe('ring 1: every tool covers a Zod input reject path', () => {
         expect(result.success).toBe(true);
       });
 
-      for (const { label, args } of testCase.invalid) {
+      for (const { label, args, expectedPath } of testCase.invalid) {
         it(`rejects ${label}`, () => {
           expect(tool).toBeDefined();
           const result = tool!.inputSchema.safeParse(args);
@@ -241,9 +300,18 @@ describe('ring 1: every tool covers a Zod input reject path', () => {
           expect(result.success).toBe(false);
           if (!result.success) {
             expect(result.error.issues.length).toBeGreaterThan(0);
+            if (expectedPath !== undefined) {
+              expect(
+                result.error.issues.some((issue) => pathsEqual(issue.path, expectedPath)),
+              ).toBe(true);
+            }
           }
         });
       }
     });
   }
 });
+
+function pathsEqual(left: PropertyKey[], right: readonly (string | number)[]): boolean {
+  return left.length === right.length && left.every((segment, index) => segment === right[index]);
+}

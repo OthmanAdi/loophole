@@ -18,15 +18,16 @@ export default tseslint.config(
       // with the SDK installed locally; see ARCHITECTURE_DECISIONS §6). Same class as
       // the *.config.ts files above: tooling, not shipped, not type-checked in CI.
       '**/build.ts',
-      // The SDK-facing code is the ONLY code that imports @ableton-extensions/sdk
-      // (the non-redistributable beta): the adapter, the five context-menu command
-      // modules, and the activate() bootstrap. It is excluded from the committed CI
-      // tsconfig so `tsc --noEmit` passes with NO SDK present (ARCHITECTURE_DECISIONS.md
-      // §1/§4), which means the type-aware ESLint project service cannot resolve these
-      // files either. Ignore them here so the committed `eslint .` stays green SDK-free;
-      // they are typechecked locally against the real types via tsconfig.live.json. The
-      // SDK-free extension files (commands/support.ts, webviews/**) stay linted.
-      'packages/extension/src/adapter/**',
+      // The four SDK-importing adapter modules are excluded from committed CI because
+      // the beta SDK is non-redistributable. They are typechecked locally through
+      // tsconfig.live.json; SDK-free adapter infrastructure remains linted in CI.
+      'packages/extension/src/adapter/live-bridge.ableton.ts',
+      'packages/extension/src/adapter/mappers.ts',
+      'packages/extension/src/adapter/resolver.ts',
+      'packages/extension/src/adapter/selection.ts',
+      // This test supplies a local runtime mock for those licensed SDK modules. Vitest
+      // runs it, while SDK-free type-aware lint intentionally excludes it.
+      'packages/extension/src/adapter/identity-recovery.test.ts',
       'packages/extension/src/commands/*.command.ts',
       'packages/extension/src/extension.ts',
     ],
@@ -61,6 +62,18 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
+    },
+  },
+  {
+    // Extension test files are excluded from its SDK-free build tsconfig. Point ESLint
+    // at a separate SDK-free program that includes infrastructure and test sources.
+    files: ['packages/extension/src/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: ['packages/extension/tsconfig.eslint.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
   },
   {

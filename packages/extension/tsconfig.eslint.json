@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/adapter/bootstrap.ts",
+    "src/adapter/reference-service.ts",
+    "src/adapter/write-queue.ts",
+    "src/commands/scene-selection.ts",
+    "src/commands/support.ts",
+    "src/webviews/**/*.ts",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ],
+  "exclude": ["dist", "node_modules", "src/adapter/identity-recovery.test.ts"]
+}

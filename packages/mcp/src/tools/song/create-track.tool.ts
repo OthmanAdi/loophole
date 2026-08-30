@@ -23,8 +23,8 @@ export const createTrackTool = defineTool({
   title: 'Create track',
   description:
     'Create one empty MIDI or audio track at the end of the track list. One undo step. The ' +
-    'track is unnamed; to name it, call live_set_track_props with the returned track id (the ' +
-    'SDK cannot create and configure in a single undo step). Returns the new track id, name, ' +
+    'track is unnamed; to name it, call live_set_track_props with the returned track reference (the ' +
+    'SDK cannot create and configure in a single undo step). Returns the new track reference, name, ' +
     'and type.',
   inputSchema,
   annotations: {
@@ -38,8 +38,8 @@ export const createTrackTool = defineTool({
     const track = await bridge.createTrack(args.kind);
     return ok(
       track,
-      `Created ${track.kind} track ${track.name} (${track.id}). To name it, call ` +
-        `live_set_track_props with this id.`,
+      `Created a ${track.kind} track. To name it, call ` +
+        'live_set_track_props with the returned track reference.',
     );
   },
 });

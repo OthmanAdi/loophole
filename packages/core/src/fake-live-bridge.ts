@@ -19,7 +19,7 @@
  *    whole group back so one call stays one undo.
  *
  * Beyond fidelity, the fake records how many undoable steps it has committed so the
- * ring-2 suite can assert the headline correctness claim: one tool call = one
+ * integration suite can assert the headline correctness claim: one tool call = one
  * transaction = one undo. See {@link FakeLiveBridge.transactionCount}.
  *
  * The internal model is a plain mutable object graph. The fake never exposes those
@@ -28,6 +28,7 @@
  */
 
 import type {
+  ArrangementClipInfo,
   ClipInfo,
   ClipLocation,
   CreateAudioClipArgs,
@@ -39,6 +40,7 @@ import type {
   RenderResult,
   SceneInfo,
   SetNotesResult,
+  SessionClipInfo,
   SongOverview,
   TrackInfo,
   TrackKind,
@@ -47,24 +49,13 @@ import type {
   TrackPropsPatch,
 } from './dtos.js';
 import { badInput, sdkRejected, staleReference, wrongType } from './errors.js';
-import {
-  arrangementClipId,
-  clipSlotId,
-  cuePointId,
-  deviceId,
-  mixerVolumeParamId,
-  paramId,
-  parsePath,
-  sceneId,
-  sessionClipId,
-  trackId,
-  type ClipId,
-  type ClipSlotId,
-  type ParamId,
-  type PathSegment,
-  type TrackId,
-} from './ids.js';
+import type { ClipId, ClipSlotId, ParamId, TrackId } from './ids.js';
 import type { LiveBridge } from './live-bridge.js';
+import {
+  SessionReferenceRegistry,
+  type SessionReference,
+  type SessionReferenceKind,
+} from './references.js';
 import { clampPitch, clampVelocity } from './transforms/notes.js';
 
 // --- internal mutable model (never leaks out of this file) ---
@@ -81,7 +72,12 @@ interface NoteModel {
   selected?: boolean;
 }
 
-interface ClipModel {
+interface IdentityModel {
+  /** Private monotonic identity, preserved through fake transaction snapshots. */
+  identity?: number;
+}
+
+interface ClipModel extends IdentityModel {
   isMidi: boolean;
   name: string;
   startTime: number;
@@ -103,11 +99,11 @@ interface ClipModel {
   filePath?: string;
 }
 
-interface ClipSlotModel {
+interface ClipSlotModel extends IdentityModel {
   clip: ClipModel | null;
 }
 
-interface ParamModel {
+interface ParamModel extends IdentityModel {
   name: string;
   min: number;
   max: number;
@@ -116,7 +112,7 @@ interface ParamModel {
   value: number;
 }
 
-interface DeviceModel {
+interface DeviceModel extends IdentityModel {
   name: string;
   parameters: ParamModel[];
 }
@@ -124,7 +120,8 @@ interface DeviceModel {
 /**
  * A track's mixer. `volume` is a full {@link ParamModel} (mirroring
  * `TrackMixer.volume`, a `DeviceParameter`) so it can be resolved by reference and
- * written through {@link FakeLiveBridge.setParam}: a write to `track:N/mixer/volume`
+ * written through {@link FakeLiveBridge.setParam}: a write through the parameter's
+ * opaque reference
  * persists because it mutates this stored object, not a throwaway. `panning` /
  * `sendCount` stay minimal scalars (no method addresses them yet).
  */
@@ -134,7 +131,7 @@ interface MixerModel {
   sendCount: number;
 }
 
-interface TrackModel {
+interface TrackModel extends IdentityModel {
   kind: TrackKind;
   name: string;
   mute: boolean;
@@ -146,7 +143,7 @@ interface TrackModel {
   mixer: MixerModel;
 }
 
-interface SceneModel {
+interface SceneModel extends IdentityModel {
   name: string;
   /** Scene tempo, or null when the scene does not override the Set tempo. */
   tempo: number | null;
@@ -154,7 +151,7 @@ interface SceneModel {
   signatureDenominator: number;
 }
 
-interface CuePointModel {
+interface CuePointModel extends IdentityModel {
   /** Position in beats. */
   time: number;
   name: string;
@@ -175,6 +172,23 @@ interface SongModel {
   /** Real cue-point objects; `cuePointCount` is derived from this array's length. */
   cuePoints: CuePointModel[];
 }
+
+type LocatedClip =
+  | {
+      readonly location: 'session';
+      readonly trackIndex: number;
+      readonly track: TrackModel;
+      readonly slotIndex: number;
+      readonly slot: ClipSlotModel;
+      readonly clip: ClipModel;
+    }
+  | {
+      readonly location: 'arrangement';
+      readonly trackIndex: number;
+      readonly track: TrackModel;
+      readonly clipIndex: number;
+      readonly clip: ClipModel;
+    };
 
 /**
  * The built-in Live device names the fake accepts for {@link FakeLiveBridge.insertDevice}.
@@ -310,6 +324,10 @@ function noteToDTO(note: NoteModel): NoteDTO {
 
 export class FakeLiveBridge implements LiveBridge {
   #song: SongModel;
+  /** Private monotonic identities prevent an opaque ref from silently retargeting. */
+  #nextIdentity = 1;
+  readonly #references: SessionReferenceRegistry<{ readonly identity: number }>;
+  readonly #referenceByIdentity = new Map<string, SessionReference>();
   /** Non-null while a transaction is in flight; holds the pre-transaction snapshot. */
   #transactionSnapshot: SongModel | null = null;
   /**
@@ -321,8 +339,12 @@ export class FakeLiveBridge implements LiveBridge {
   /** Count of committed undoable steps (one per standalone mutation or per transaction). */
   #undoSteps = 0;
 
-  constructor(song?: SongModel) {
+  constructor(song?: SongModel, options?: { readonly referenceCapacity?: number }) {
     this.#song = song ?? FakeLiveBridge.#seedModel();
+    this.#references = new SessionReferenceRegistry<{ readonly identity: number }>({
+      maxEntries: options?.referenceCapacity ?? 4096,
+    });
+    this.#hydrateIdentities();
   }
 
   /**
@@ -335,8 +357,8 @@ export class FakeLiveBridge implements LiveBridge {
 
   /**
    * A Set with a single MIDI track holding one Session MIDI clip whose notes are
-   * `notes`. The clip is `track:0/clipslot:0/clip` ({@link FakeLiveBridge.firstClipId}).
-   * Tempo 120, C-major scale. The headline ring-2 fixture.
+   * `notes`. The clip is exposed through {@link FakeLiveBridge.firstClipId}.
+   * Tempo 120, C-major scale. The headline integration fixture.
    */
   static withOneMidiClip(notes: readonly NoteDTO[]): FakeLiveBridge {
     const clip: ClipModel = {
@@ -381,7 +403,7 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /**
-   * A Session-to-Song (W5) fixture: three scenes (`Intro` / `Verse` / `Chorus`) and
+   * A Session-to-Song fixture: three scenes (`Intro` / `Verse` / `Chorus`) and
    * two tracks (one MIDI, one audio) whose clip slots are populated per scene, so a
    * scene index maps to a clip-slot index. The MIDI clips carry notes; the audio
    * clips carry a `filePath`. No Arrangement clips yet (the build writes them). Use
@@ -395,7 +417,7 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /**
-   * A Set Janitor (W6) fixture: a deliberately messy Set so `detectIssues` has every
+   * A Set Janitor fixture: a deliberately messy Set so `detectIssues` has every
    * issue kind to find and the handler has rename / recolor / delete fixes to apply.
    *  - track 0 `Bass` (midi): a real clip, off-palette color, plus a clip whose
    *    `endMarker` overruns its `loopEnd` (loop-overrun issue),
@@ -412,10 +434,10 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /**
-   * A focused Gain Stage Doctor (W3) fixture: a single audio track `Gtr` with a known
+   * A focused Gain Stage Doctor fixture: a single audio track `Gtr` with a known
    * mixer volume (`0.6`, below the `0.85` unity) and one audio Arrangement clip, so a
    * test can read {@link FakeLiveBridge.getTrackMixer}, compute a trim, and write it
-   * back through {@link FakeLiveBridge.setParam} on `track:0/mixer/volume`. (The
+   * back through {@link FakeLiveBridge.setParam} using its opaque parameter ref. (The
    * broader {@link FakeLiveBridge.seeded} Set also has an audio track with a mixer;
    * this one isolates the mixer round-trip.)
    */
@@ -462,28 +484,34 @@ export class FakeLiveBridge implements LiveBridge {
     return new FakeLiveBridge(song);
   }
 
-  /** The id of the mixer volume parameter of track 0 (`track:0/mixer/volume`). */
+  /** Opaque reference of the first fixture track's mixer-volume parameter. */
   get firstMixerVolumeId(): ParamId {
-    return mixerVolumeParamId(0);
+    const track = this.#song.tracks[0];
+    if (track === undefined) throw staleReference('fixture:firstMixerVolume');
+    return this.#referenceFor('parameter', track.mixer.volume);
   }
 
   /**
    * The id of the first Session clip in the {@link FakeLiveBridge.withOneMidiClip}
-   * fixture (`track:0/clipslot:0/clip`). An INSTANCE accessor so the ring-2 suite can
+   * fixture. An instance accessor so the integration suite can
    * write `live.firstClipId` (as the 02_BRIDGE_SPEC §8 sketch does), without
    * rebuilding the id.
    */
   get firstClipId(): ClipId {
-    return sessionClipId(0, 0);
+    const slot = this.#song.tracks[0]?.clipSlots[0];
+    if (slot?.clip === null || slot?.clip === undefined) throw staleReference('fixture:firstClip');
+    return this.#referenceFor('clip', slot.clip);
   }
 
   /**
    * The id of the first Session clip slot in the {@link FakeLiveBridge.withOneMidiClip}
-   * fixture (`track:0/clipslot:0`). The second slot (`track:0/clipslot:1`) is empty.
+   * fixture. The second slot is empty.
    * An instance accessor, paired with {@link FakeLiveBridge.firstClipId}.
    */
   get firstSlotId(): ClipSlotId {
-    return clipSlotId(0, 0);
+    const slot = this.#song.tracks[0]?.clipSlots[0];
+    if (slot === undefined) throw staleReference('fixture:firstSlot');
+    return this.#referenceFor('clip-slot', slot);
   }
 
   /**
@@ -500,7 +528,7 @@ export class FakeLiveBridge implements LiveBridge {
   /**
    * The number of undoable steps committed so far: one per standalone mutation and
    * one per {@link FakeLiveBridge.transaction} call (its grouped mutations collapse
-   * into that single step). This is the affordance ring 2 uses to assert "one tool
+   * into that single step). This lets integration tests assert "one tool
    * call = one transaction = one undo": snapshot it before a tool call and expect it
    * to grow by exactly one after.
    */
@@ -593,7 +621,7 @@ export class FakeLiveBridge implements LiveBridge {
       solo: false,
       arm: false,
       clipSlots: [{ clip: null }],
-      // One AUDIO arrangement clip (`track:2/clip:0`) so the WRONG_TYPE branch of
+      // One AUDIO arrangement clip so the WRONG_TYPE branch of
       // getNotes / setNotes (a non-MIDI clip) is exercisable.
       arrangementClips: [
         {
@@ -761,34 +789,12 @@ export class FakeLiveBridge implements LiveBridge {
   // --- resolution helpers (throw STALE_REFERENCE / WRONG_TYPE like the SDK) ---
 
   #resolveTrack(id: TrackId): { index: number; track: TrackModel } {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'track');
-    }
-    if (segments.length !== 1) {
-      throw wrongType(id, 'track');
-    }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
-    }
-    return { index: head.index, track };
+    return this.#resolveReference(id, 'track', (identity) => this.#findTrack(identity), 'track');
   }
 
   /** Resolve any clip id (session or arrangement) to its mutable model. */
   #resolveClip(id: ClipId): ClipModel {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'clip');
-    }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
-    }
-    const rest: readonly PathSegment[] = segments.slice(1);
-    return this.#resolveClipUnderTrack(id, track, rest);
+    return this.#resolveClipLocation(id).clip;
   }
 
   /**
@@ -800,57 +806,25 @@ export class FakeLiveBridge implements LiveBridge {
     clip: ClipModel;
     location: ClipLocation;
     slotId?: ClipSlotId;
+    sceneIndex?: number;
   } {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'clip');
+    const located = this.#resolveClipLocation(id);
+    if (located.location === 'session') {
+      return {
+        clip: located.clip,
+        location: located.location,
+        slotId: this.#referenceFor('clip-slot', located.slot),
+        sceneIndex: located.slotIndex,
+      };
     }
-    const trackIndex = head.index;
-    const clip = this.#resolveClip(id);
-    const second = segments[1];
-    if (second !== undefined && second.kind === 'clipslot' && 'index' in second) {
-      return { clip, location: 'session', slotId: clipSlotId(trackIndex, second.index) };
-    }
-    return { clip, location: 'arrangement' };
-  }
-
-  #resolveClipUnderTrack(id: ClipId, track: TrackModel, rest: readonly PathSegment[]): ClipModel {
-    const first = rest[0];
-    if (first === undefined) {
-      throw wrongType(id, 'clip');
-    }
-    // Arrangement clip: track:N/clip:M
-    if (first.kind === 'clip' && 'index' in first) {
-      const clip = track.arrangementClips[first.index];
-      if (clip === undefined) {
-        throw staleReference(id);
-      }
-      return clip;
-    }
-    // Session clip: track:N/clipslot:M/clip
-    if (first.kind === 'clipslot' && 'index' in first) {
-      const slot = track.clipSlots[first.index];
-      if (slot === undefined) {
-        throw staleReference(id);
-      }
-      const terminal = rest[1];
-      if (terminal === undefined || terminal.kind !== 'clip') {
-        throw wrongType(id, 'clip');
-      }
-      if (slot.clip === null) {
-        throw staleReference(id, `Clip slot "${id}" is empty.`);
-      }
-      return slot.clip;
-    }
-    throw wrongType(id, 'clip');
+    return { clip: located.clip, location: located.location };
   }
 
   /**
    * Resolve a clip id to its CONTAINER for deletion. A Session clip
-   * (`track:N/clipslot:M/clip`) resolves to its slot (deletion nulls the slot, which
+   * resolves to its slot (deletion nulls the slot, which
    * remains and then reports empty, mirroring `ClipSlot.deleteClip()`); an
-   * Arrangement clip (`track:N/clip:M`) resolves to the track's `arrangementClips`
+   * Arrangement clip resolves to the track's `arrangementClips`
    * array + index (deletion splices it, mirroring `Track.deleteClip(clip)`). Unlike
    * {@link FakeLiveBridge.#resolveClip}, this hands back the container so the delete
    * can detach the clip rather than just read it.
@@ -860,121 +834,155 @@ export class FakeLiveBridge implements LiveBridge {
   ):
     | { readonly kind: 'session'; readonly slot: ClipSlotModel }
     | { readonly kind: 'arrangement'; readonly clips: ClipModel[]; readonly index: number } {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'clip');
-    }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
-    }
-    const first = segments[1];
-    if (first === undefined) {
-      throw wrongType(id, 'clip');
-    }
-    // Arrangement clip: track:N/clip:M
-    if (first.kind === 'clip' && 'index' in first) {
-      if (segments.length !== 2) {
-        throw wrongType(id, 'clip');
-      }
-      const clip = track.arrangementClips[first.index];
-      if (clip === undefined) {
-        throw staleReference(id);
-      }
-      return { kind: 'arrangement', clips: track.arrangementClips, index: first.index };
-    }
-    // Session clip: track:N/clipslot:M/clip
-    if (first.kind === 'clipslot' && 'index' in first) {
-      const slot = track.clipSlots[first.index];
-      if (slot === undefined) {
-        throw staleReference(id);
-      }
-      const terminal = segments[2];
-      if (terminal === undefined || terminal.kind !== 'clip' || segments.length !== 3) {
-        throw wrongType(id, 'clip');
-      }
-      if (slot.clip === null) {
-        throw staleReference(id, `Clip slot "${id}" is empty.`);
-      }
-      return { kind: 'session', slot };
-    }
-    throw wrongType(id, 'clip');
+    const located = this.#resolveClipLocation(id);
+    if (located.location === 'session') return { kind: 'session', slot: located.slot };
+    return { kind: 'arrangement', clips: located.track.arrangementClips, index: located.clipIndex };
   }
 
-  /** Resolve a clip-slot id (`track:N/clipslot:M`) to its mutable model + indices. */
+  /** Resolve a clip-slot reference to its mutable model + indices. */
   #resolveSlot(id: ClipSlotId): { trackIndex: number; slotIndex: number; slot: ClipSlotModel } {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'clip slot');
-    }
-    const second = segments[1];
-    if (second === undefined || second.kind !== 'clipslot' || !('index' in second)) {
-      throw wrongType(id, 'clip slot');
-    }
-    if (segments.length !== 2) {
-      throw wrongType(id, 'clip slot');
-    }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
-    }
-    const slot = track.clipSlots[second.index];
-    if (slot === undefined) {
-      throw staleReference(id);
-    }
-    return { trackIndex: head.index, slotIndex: second.index, slot };
+    return this.#resolveReference(
+      id,
+      'clip-slot',
+      (identity) => this.#findSlot(identity),
+      'clip slot',
+    );
   }
 
   /**
-   * Resolve a parameter id to its mutable {@link ParamModel}. Two id shapes resolve:
-   * a device-chain parameter `track:N/device:D/param:P`, and a mixer volume
-   * `track:N/mixer/volume`. The model is returned BY REFERENCE so a follow-up
+   * Resolve a parameter reference to its mutable {@link ParamModel}. It can address
+   * a device-chain parameter or a mixer volume. The model is returned BY REFERENCE so a follow-up
    * {@link FakeLiveBridge.setParam} that assigns `param.value` persists.
    */
   #resolveParam(id: ParamId): { param: ParamModel } {
-    const segments = parsePath(id);
-    const head = segments[0];
-    if (head === undefined || head.kind !== 'track' || !('index' in head)) {
-      throw wrongType(id, 'device parameter');
+    return this.#resolveReference(
+      id,
+      'parameter',
+      (identity) => this.#findParam(identity),
+      'device parameter',
+    );
+  }
+
+  #resolveClipLocation(id: ClipId): LocatedClip {
+    return this.#resolveReference(id, 'clip', (identity) => this.#findClip(identity), 'clip');
+  }
+
+  #resolveReference<T, K extends SessionReferenceKind>(
+    reference: string,
+    kind: K,
+    find: (identity: number) => T | null,
+    expected: string,
+  ): T {
+    const lookup = this.#references.resolve(reference, kind);
+    if (lookup.status === 'wrong-kind') throw wrongType(reference, expected);
+    if (lookup.status !== 'found') throw staleReference(reference);
+    this.#rememberReference(kind, lookup.value.identity, lookup.reference);
+    const located = find(lookup.value.identity);
+    if (located === null) throw staleReference(reference);
+    return located;
+  }
+
+  #referenceFor<K extends SessionReferenceKind>(
+    kind: K,
+    model: IdentityModel,
+  ): SessionReference<K> {
+    const identity = this.#identity(model);
+    const key = `${kind}:${String(identity)}`;
+    const existing = this.#referenceByIdentity.get(key);
+    if (existing !== undefined && this.#references.resolve(existing, kind).status === 'found') {
+      this.#rememberReference(kind, identity, existing as SessionReference<K>);
+      return existing as SessionReference<K>;
     }
-    const track = this.#song.tracks[head.index];
-    if (track === undefined) {
-      throw staleReference(id);
+    this.#referenceByIdentity.delete(key);
+    const reference = this.#references.issue(kind, { identity });
+    this.#rememberReference(kind, identity, reference);
+    return reference;
+  }
+
+  /** Keep this dedupe LRU in lockstep with every registry issue and successful resolve. */
+  #rememberReference<K extends SessionReferenceKind>(
+    kind: K,
+    identity: number,
+    reference: SessionReference<K>,
+  ): void {
+    const key = `${kind}:${String(identity)}`;
+    this.#referenceByIdentity.delete(key);
+    this.#referenceByIdentity.set(key, reference);
+    while (this.#referenceByIdentity.size > this.#references.maxEntries) {
+      const oldest = this.#referenceByIdentity.keys().next().value;
+      if (oldest === undefined) break;
+      this.#referenceByIdentity.delete(oldest);
     }
-    const second = segments[1];
-    // Mixer volume parameter: track:N/mixer/volume.
-    if (second !== undefined && second.kind === 'mixer') {
-      const terminal = segments[2];
-      if (terminal === undefined || terminal.kind !== 'volume' || segments.length !== 3) {
-        throw wrongType(id, 'mixer volume parameter');
+  }
+
+  #identity(model: IdentityModel): number {
+    if (model.identity === undefined) {
+      model.identity = this.#nextIdentity++;
+    } else if (model.identity >= this.#nextIdentity) {
+      this.#nextIdentity = model.identity + 1;
+    }
+    return model.identity;
+  }
+
+  #hydrateIdentities(): void {
+    for (const track of this.#song.tracks) {
+      this.#identity(track);
+      this.#identity(track.mixer.volume);
+      for (const slot of track.clipSlots) {
+        this.#identity(slot);
+        if (slot.clip !== null) this.#identity(slot.clip);
       }
-      return { param: track.mixer.volume };
+      for (const clip of track.arrangementClips) this.#identity(clip);
+      for (const device of track.devices) {
+        this.#identity(device);
+        for (const parameter of device.parameters) this.#identity(parameter);
+      }
     }
-    // Device-chain parameter: track:N/device:D/param:P.
-    const dev = segments[1];
-    const par = segments[2];
-    if (
-      dev === undefined ||
-      dev.kind !== 'device' ||
-      !('index' in dev) ||
-      par === undefined ||
-      par.kind !== 'param' ||
-      !('index' in par) ||
-      segments.length !== 3
-    ) {
-      throw wrongType(id, 'device parameter');
+    for (const scene of this.#song.scenes) this.#identity(scene);
+    for (const cuePoint of this.#song.cuePoints) this.#identity(cuePoint);
+  }
+
+  #findTrack(identity: number): { index: number; track: TrackModel } | null {
+    const index = this.#song.tracks.findIndex((track) => track.identity === identity);
+    const track = index < 0 ? undefined : this.#song.tracks[index];
+    return track === undefined ? null : { index, track };
+  }
+
+  #findSlot(
+    identity: number,
+  ): { trackIndex: number; slotIndex: number; slot: ClipSlotModel } | null {
+    for (const [trackIndex, track] of this.#song.tracks.entries()) {
+      const slotIndex = track.clipSlots.findIndex((slot) => slot.identity === identity);
+      const slot = slotIndex < 0 ? undefined : track.clipSlots[slotIndex];
+      if (slot !== undefined) return { trackIndex, slotIndex, slot };
     }
-    const device = track.devices[dev.index];
-    if (device === undefined) {
-      throw staleReference(id);
+    return null;
+  }
+
+  #findClip(identity: number): LocatedClip | null {
+    for (const [trackIndex, track] of this.#song.tracks.entries()) {
+      for (const [slotIndex, slot] of track.clipSlots.entries()) {
+        if (slot.clip?.identity === identity) {
+          return { location: 'session', trackIndex, track, slotIndex, slot, clip: slot.clip };
+        }
+      }
+      const clipIndex = track.arrangementClips.findIndex((clip) => clip.identity === identity);
+      const clip = clipIndex < 0 ? undefined : track.arrangementClips[clipIndex];
+      if (clip !== undefined)
+        return { location: 'arrangement', trackIndex, track, clipIndex, clip };
     }
-    const param = device.parameters[par.index];
-    if (param === undefined) {
-      throw staleReference(id);
+    return null;
+  }
+
+  #findParam(identity: number): { param: ParamModel } | null {
+    for (const track of this.#song.tracks) {
+      if (track.mixer.volume.identity === identity) return { param: track.mixer.volume };
+      for (const device of track.devices) {
+        const param = device.parameters.find((candidate) => candidate.identity === identity);
+        if (param !== undefined) return { param };
+      }
     }
-    return { param };
+    return null;
   }
 
   // --- reads (synchronous) ---
@@ -993,8 +1001,8 @@ export class FakeLiveBridge implements LiveBridge {
       returnTrackCount: s.returnTrackCount,
       sceneCount: s.scenes.length,
       cuePointCount: s.cuePoints.length,
-      tracks: s.tracks.map((track, index) => ({
-        id: trackId(index),
+      tracks: s.tracks.map((track) => ({
+        id: this.#referenceFor('track', track),
         name: track.name,
         type: track.kind,
       })),
@@ -1002,39 +1010,36 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   listTracks(): readonly TrackInfo[] {
-    return this.#song.tracks.map((track, index) => this.#trackInfo(index, track));
+    return this.#song.tracks.map((track) => this.#trackInfo(track));
   }
 
   findTrack(query: string): readonly TrackMatch[] {
     const needle = query.toLowerCase();
     const matches: TrackMatch[] = [];
-    this.#song.tracks.forEach((track, index) => {
+    this.#song.tracks.forEach((track) => {
       if (track.name.toLowerCase().includes(needle)) {
-        matches.push({ id: trackId(index), name: track.name, type: track.kind });
+        matches.push({
+          id: this.#referenceFor('track', track),
+          name: track.name,
+          type: track.kind,
+        });
       }
     });
     return matches;
   }
 
   listClips(id: TrackId): readonly ClipInfo[] {
-    const { index, track } = this.#resolveTrack(id);
+    const { track } = this.#resolveTrack(id);
     const out: ClipInfo[] = [];
     track.clipSlots.forEach((slot, slotIndex) => {
       if (slot.clip !== null) {
-        out.push(
-          this.#clipInfo(
-            sessionClipId(index, slotIndex),
-            'session',
-            slot.clip,
-            clipSlotId(index, slotIndex),
-          ),
-        );
+        out.push(this.#clipInfo('session', slot.clip, slot, slotIndex));
       } else {
-        out.push(this.#emptySlotInfo(clipSlotId(index, slotIndex)));
+        out.push(this.#emptySlotInfo(slot, slotIndex));
       }
     });
-    track.arrangementClips.forEach((clip, clipIndex) => {
-      out.push(this.#clipInfo(arrangementClipId(index, clipIndex), 'arrangement', clip));
+    track.arrangementClips.forEach((clip) => {
+      out.push(this.#clipInfo('arrangement', clip));
     });
     return out;
   }
@@ -1058,25 +1063,23 @@ export class FakeLiveBridge implements LiveBridge {
   // nor the undo steps.
 
   async listDeviceParams(id: TrackId): Promise<readonly DeviceParamInfo[]> {
-    const { index, track } = this.#resolveTrack(id);
+    const { track } = this.#resolveTrack(id);
     const out: DeviceParamInfo[] = [];
-    track.devices.forEach((device, deviceIndex) => {
-      device.parameters.forEach((param, paramIndex) => {
-        out.push(this.#paramInfo(paramId(index, deviceIndex, paramIndex), param));
+    track.devices.forEach((device) => {
+      device.parameters.forEach((param) => {
+        out.push(this.#paramInfo(param));
       });
     });
     return out;
   }
 
   listScenes(): readonly SceneInfo[] {
-    return this.#song.scenes.map((scene, index) => this.#sceneInfo(index, scene));
+    return this.#song.scenes.map((scene) => this.#sceneInfo(scene));
   }
 
   async getTrackMixer(id: TrackId): Promise<TrackMixerInfo> {
-    const { index, track } = this.#resolveTrack(id);
-    // Expose the volume as an addressable parameter: its id is track:N/mixer/volume,
-    // which #resolveParam routes, so a handler can write it through setParam (one undo).
-    return { volume: this.#paramInfo(mixerVolumeParamId(index), track.mixer.volume) };
+    const { track } = this.#resolveTrack(id);
+    return { volume: this.#paramInfo(track.mixer.volume) };
   }
 
   // --- mutations (async; each is one undo step unless inside a transaction) ---
@@ -1093,12 +1096,12 @@ export class FakeLiveBridge implements LiveBridge {
 
   async setTrackProps(id: TrackId, props: TrackPropsPatch): Promise<TrackInfo> {
     return this.#mutate(() => {
-      const { index, track } = this.#resolveTrack(id);
+      const { track } = this.#resolveTrack(id);
       if (props.name !== undefined) track.name = props.name;
       if (props.mute !== undefined) track.mute = props.mute;
       if (props.solo !== undefined) track.solo = props.solo;
       if (props.arm !== undefined) track.arm = props.arm;
-      return this.#trackInfo(index, track);
+      return this.#trackInfo(track);
     });
   }
 
@@ -1118,13 +1121,12 @@ export class FakeLiveBridge implements LiveBridge {
     return this.#mutate(() => {
       const name = kind === 'midi' ? 'MIDI' : 'Audio';
       this.#song.tracks.push(FakeLiveBridge.#emptyTrack(kind, name));
-      const index = this.#song.tracks.length - 1;
-      const track = this.#song.tracks[index];
+      const track = this.#song.tracks.at(-1);
       if (track === undefined) {
         // Unreachable: we just pushed it. Guards noUncheckedIndexedAccess.
         throw sdkRejected('Track creation did not yield a track.');
       }
-      return this.#trackInfo(index, track);
+      return this.#trackInfo(track);
     });
   }
 
@@ -1161,21 +1163,22 @@ export class FakeLiveBridge implements LiveBridge {
         notes: [],
       };
       slot.clip = clip;
-      return this.#clipInfo(
-        sessionClipId(trackIndex, slotIndex),
-        'session',
-        clip,
-        clipSlotId(trackIndex, slotIndex),
-      );
+      return this.#clipInfo('session', clip, slot, slotIndex);
     });
   }
 
   async setClipProps(id: ClipId, props: { name?: string; color?: number }): Promise<ClipInfo> {
     return this.#mutate(() => {
-      const { clip, location, slotId } = this.#resolveClipWithLocation(id);
+      const { clip, location, slotId, sceneIndex } = this.#resolveClipWithLocation(id);
       if (props.name !== undefined) clip.name = props.name;
       if (props.color !== undefined) clip.color = props.color;
-      return this.#clipInfo(id, location, clip, slotId);
+      if (location === 'session') {
+        if (slotId === undefined || sceneIndex === undefined) {
+          throw badInput('A resolved Session clip is missing its slot or scene metadata.');
+        }
+        return this.#clipInfo('session', clip, this.#resolveSlot(slotId).slot, sceneIndex);
+      }
+      return this.#clipInfo('arrangement', clip);
     });
   }
 
@@ -1204,7 +1207,7 @@ export class FakeLiveBridge implements LiveBridge {
     lengthBeats: number,
   ): Promise<ClipInfo> {
     return this.#mutate(() => {
-      const { index, track } = this.#resolveTrack(id);
+      const { track } = this.#resolveTrack(id);
       if (track.kind !== 'midi') {
         throw wrongType(id, 'MIDI track');
       }
@@ -1228,14 +1231,13 @@ export class FakeLiveBridge implements LiveBridge {
         notes: [],
       };
       track.arrangementClips.push(clip);
-      const clipIndex = track.arrangementClips.length - 1;
-      return this.#clipInfo(arrangementClipId(index, clipIndex), 'arrangement', clip);
+      return this.#clipInfo('arrangement', clip);
     });
   }
 
   async createArrangementAudioClip(id: TrackId, args: CreateAudioClipArgs): Promise<ClipInfo> {
     return this.#mutate(() => {
-      const { index, track } = this.#resolveTrack(id);
+      const { track } = this.#resolveTrack(id);
       if (track.kind !== 'audio') {
         throw wrongType(id, 'audio track');
       }
@@ -1263,8 +1265,7 @@ export class FakeLiveBridge implements LiveBridge {
         filePath: args.filePath,
       };
       track.arrangementClips.push(clip);
-      const clipIndex = track.arrangementClips.length - 1;
-      return this.#clipInfo(arrangementClipId(index, clipIndex), 'arrangement', clip);
+      return this.#clipInfo('arrangement', clip);
     });
   }
 
@@ -1295,13 +1296,12 @@ export class FakeLiveBridge implements LiveBridge {
       // Keep cue points ordered by time, the way Live presents locators; the returned
       // id reflects the post-insert index.
       this.#song.cuePoints.sort((a, b) => a.time - b.time);
-      const cpIndex = this.#song.cuePoints.findIndex((c) => c.time === beat && c.name === name);
-      const resolved = this.#song.cuePoints[cpIndex];
-      if (resolved === undefined) {
-        // Unreachable: we just inserted it. Guards noUncheckedIndexedAccess.
+      const cuePoint = this.#song.cuePoints.find(
+        (candidate) => candidate.time === beat && candidate.name === name,
+      );
+      if (cuePoint === undefined)
         throw sdkRejected('Cue point creation did not yield a cue point.');
-      }
-      return this.#cuePointInfo(cpIndex, resolved);
+      return this.#cuePointInfo(cuePoint);
     });
   }
 
@@ -1314,13 +1314,13 @@ export class FakeLiveBridge implements LiveBridge {
         );
       }
       param.value = value;
-      return this.#paramInfo(id, param);
+      return this.#paramInfo(param);
     });
   }
 
   async insertDevice(id: TrackId, deviceName: string, index: number): Promise<DeviceInfo> {
     return this.#mutate(() => {
-      const { index: trackIndex, track } = this.#resolveTrack(id);
+      const { track } = this.#resolveTrack(id);
       if (!Number.isInteger(index) || index < 0) {
         throw badInput(`Device index ${String(index)} must be a non-negative integer.`);
       }
@@ -1334,7 +1334,7 @@ export class FakeLiveBridge implements LiveBridge {
       const device: DeviceModel = { name: deviceName, parameters: makeParams() };
       const at = Math.min(index, track.devices.length);
       track.devices.splice(at, 0, device);
-      return this.#deviceInfo(trackIndex, at, device);
+      return this.#deviceInfo(device);
     });
   }
 
@@ -1440,7 +1440,7 @@ export class FakeLiveBridge implements LiveBridge {
 
   // --- DTO builders ---
 
-  #trackInfo(index: number, track: TrackModel): TrackInfo {
+  #trackInfo(track: TrackModel): TrackInfo {
     const mixer: MixerInfo = {
       volume: track.mixer.volume.value,
       panning: track.mixer.panning,
@@ -1448,7 +1448,7 @@ export class FakeLiveBridge implements LiveBridge {
     };
     const soloActive = this.#song.tracks.some((t) => t.solo);
     return {
-      id: trackId(index),
+      id: this.#referenceFor('track', track),
       kind: track.kind,
       name: track.name,
       mute: track.mute,
@@ -1462,12 +1462,23 @@ export class FakeLiveBridge implements LiveBridge {
     };
   }
 
-  #clipInfo(id: ClipId, location: ClipLocation, clip: ClipModel, slotId?: ClipSlotId): ClipInfo {
+  #clipInfo(
+    location: 'session',
+    clip: ClipModel,
+    slot: ClipSlotModel,
+    sceneIndex: number,
+  ): SessionClipInfo;
+  #clipInfo(location: 'arrangement', clip: ClipModel): ArrangementClipInfo;
+  #clipInfo(
+    location: ClipLocation,
+    clip: ClipModel,
+    slot?: ClipSlotModel,
+    sceneIndex?: number,
+  ): ClipInfo {
     const base = {
-      id,
+      id: this.#referenceFor('clip', clip),
       isMidi: clip.isMidi,
       kind: clip.isMidi ? ('midi' as const) : ('audio' as const),
-      location,
       name: clip.name,
       startTime: clip.startTime,
       endTime: clip.startTime + clip.duration,
@@ -1479,20 +1490,31 @@ export class FakeLiveBridge implements LiveBridge {
       color: clip.color,
       muted: clip.muted,
     };
-    // Omit slotId / filePath when absent (exactOptionalPropertyTypes): never set a
-    // key to undefined. filePath is present for audio clips only.
-    const withSlot = slotId === undefined ? base : { ...base, slotId };
-    return clip.filePath === undefined ? withSlot : { ...withSlot, filePath: clip.filePath };
+    const withFile = clip.filePath === undefined ? base : { ...base, filePath: clip.filePath };
+    if (location === 'session') {
+      if (slot === undefined || sceneIndex === undefined) {
+        throw badInput('A populated Session clip requires a clip-slot reference and scene index.');
+      }
+      return {
+        ...withFile,
+        location: 'session',
+        slotId: this.#referenceFor('clip-slot', slot),
+        sceneIndex,
+      };
+    }
+    return { ...withFile, location: 'arrangement' };
   }
 
   /** An empty Session clip slot, reported so the model can see where to create a clip. */
-  #emptySlotInfo(slotId: ClipSlotId): ClipInfo {
+  #emptySlotInfo(slot: ClipSlotModel, sceneIndex: number): ClipInfo {
+    const slotId = this.#referenceFor('clip-slot', slot);
     return {
       id: slotId,
       isMidi: false,
       kind: 'empty',
       location: 'session',
       slotId,
+      sceneIndex,
       name: '',
       startTime: 0,
       endTime: 0,
@@ -1506,9 +1528,9 @@ export class FakeLiveBridge implements LiveBridge {
     };
   }
 
-  #paramInfo(id: ParamId, param: ParamModel): DeviceParamInfo {
+  #paramInfo(param: ParamModel): DeviceParamInfo {
     return {
-      id,
+      id: this.#referenceFor('parameter', param),
       name: param.name,
       min: param.min,
       max: param.max,
@@ -1518,19 +1540,17 @@ export class FakeLiveBridge implements LiveBridge {
     };
   }
 
-  #deviceInfo(trackIndex: number, deviceIndex: number, device: DeviceModel): DeviceInfo {
+  #deviceInfo(device: DeviceModel): DeviceInfo {
     return {
-      id: deviceId(trackIndex, deviceIndex),
+      id: this.#referenceFor('device', device),
       name: device.name,
-      parameters: device.parameters.map((param, paramIndex) =>
-        this.#paramInfo(paramId(trackIndex, deviceIndex, paramIndex), param),
-      ),
+      parameters: device.parameters.map((param) => this.#paramInfo(param)),
     };
   }
 
-  #sceneInfo(index: number, scene: SceneModel): SceneInfo {
+  #sceneInfo(scene: SceneModel): SceneInfo {
     return {
-      id: sceneId(index),
+      id: this.#referenceFor('scene', scene),
       name: scene.name,
       tempo: scene.tempo,
       signatureNumerator: scene.signatureNumerator,
@@ -1538,8 +1558,12 @@ export class FakeLiveBridge implements LiveBridge {
     };
   }
 
-  #cuePointInfo(index: number, cuePoint: CuePointModel): CuePointInfo {
-    return { id: cuePointId(index), time: cuePoint.time, name: cuePoint.name };
+  #cuePointInfo(cuePoint: CuePointModel): CuePointInfo {
+    return {
+      id: this.#referenceFor('cue-point', cuePoint),
+      time: cuePoint.time,
+      name: cuePoint.name,
+    };
   }
 
   static #emptyTrack(kind: TrackKind, name: string): TrackModel {

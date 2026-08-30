@@ -9,15 +9,13 @@
 
 import { z } from 'zod';
 
-import { makePathId } from '@othmanadi/loophole-core';
-
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { SlotId } from '../../schemas/primitives.js';
+import { ClipSlotReference } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
-    slotId: SlotId,
+    slotId: ClipSlotReference,
     lengthBeats: z.number().min(0.25).describe('Clip length in beats, minimum 0.25'),
   })
   .strict();
@@ -27,8 +25,8 @@ export const createMidiClipTool = defineTool({
   title: 'Create MIDI clip',
   description:
     'Create an empty MIDI clip in a Session clip slot (given a length in beats, minimum 0.25), ' +
-    'ready for live_set_notes. One undo step. The slot id must be an empty slot on a MIDI track ' +
-    '(from live_list_clips). Returns the new clip id and slot id.',
+    'ready for live_set_notes. One undo step. The slot reference must be an empty slot on a MIDI track ' +
+    '(from live_list_clips). Returns the new clip and slot references.',
   inputSchema,
   annotations: {
     readOnlyHint: false,
@@ -38,17 +36,16 @@ export const createMidiClipTool = defineTool({
     openWorldHint: false,
   },
   handle: async (args, bridge) => {
-    const slotId = makePathId(args.slotId);
-    const clip = await bridge.createMidiClip(slotId, args.lengthBeats);
+    const clip = await bridge.createMidiClip(args.slotId, args.lengthBeats);
     const data = {
       clipId: clip.id,
-      slotId: clip.slotId ?? slotId,
+      slotId: clip.slotId ?? args.slotId,
       lengthBeats: clip.duration,
     };
     return ok(
       data,
-      `Created MIDI clip ${clip.id} (${String(clip.duration)} beats). Add notes with ` +
-        `live_set_notes using this clip id.`,
+      `Created a MIDI clip (${String(clip.duration)} beats). Add notes with ` +
+        'live_set_notes using the returned clip reference.',
     );
   },
 });

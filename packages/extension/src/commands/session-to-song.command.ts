@@ -23,10 +23,12 @@ import type { ExtensionContext } from '@ableton-extensions/sdk';
 import {
   type LiveBridge,
   runSessionToSong,
+  type SceneInfo,
   type Section,
   type TimeSig,
 } from '@othmanadi/loophole-core';
 import type { V } from '../adapter/resolver.js';
+import { sceneReferenceForIndex } from './scene-selection.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
 import { parseModalResult, runCommand } from './support.js';
 
@@ -79,8 +81,9 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
  * more than {@link PROGRESS_THRESHOLD} sections shows a progress dialog around it.
  */
 async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<void> {
-  const scenes: SceneRow[] = bridge.listScenes().map((scene) => ({
-    index: indexOfScene(scene.id),
+  const listedScenes = bridge.listScenes();
+  const scenes: SceneRow[] = listedScenes.map((scene, index) => ({
+    index,
     name: scene.name,
   }));
 
@@ -94,7 +97,7 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<voi
 
   const sectionMap: Section[] = result.sections
     .filter((s) => s.name.trim().length > 0 && s.bars > 0)
-    .map(toSection);
+    .map((section) => toSection(section, listedScenes));
   if (sectionMap.length === 0) {
     return; // nothing to build
   }
@@ -111,18 +114,12 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<voi
   await runSessionToSong(bridge, args);
 }
 
-/** Build a {@link Section}, omitting `color` when absent (exactOptionalPropertyTypes). */
-function toSection(input: SectionInput): Section {
-  const base = { name: input.name.trim(), sceneIndex: input.sceneIndex, bars: input.bars };
+/** Build a {@link Section}, binding the modal's numeric choice to the opening scene snapshot. */
+function toSection(input: SectionInput, openingScenes: readonly SceneInfo[]): Section {
+  const base = {
+    name: input.name.trim(),
+    sceneRef: sceneReferenceForIndex(openingScenes, input.sceneIndex),
+    bars: input.bars,
+  };
   return input.color === undefined ? base : { ...base, color: input.color };
-}
-
-/**
- * Read the scene index back out of a `SceneId` (`scene:N`). The bridge returns scenes in
- * order, so the array position equals the scene index, but parsing the id keeps this
- * robust to any future gap. Falls back to `0` for an unparseable id.
- */
-function indexOfScene(sceneId: string): number {
-  const match = sceneId.match(/scene:(\d+)/);
-  return match?.[1] !== undefined ? Number(match[1]) : 0;
 }

@@ -14,8 +14,17 @@ import { describe, expect, it } from 'vitest';
 import { isBridgeErrorOfCode } from '../errors.js';
 import { FakeLiveBridge } from '../fake-live-bridge.js';
 import { runScaleLock } from '../handlers/scale-lock.js';
-import { arrangementClipId, sessionClipId } from '../ids.js';
-import type { NoteDTO } from '../dtos.js';
+import type { ClipId } from '../ids.js';
+import { isPlayableClip, type NoteDTO } from '../dtos.js';
+import { makeSessionReference } from '../references.js';
+
+function clipIdAt(bridge: FakeLiveBridge, trackIndex: number, clipIndex: number): ClipId {
+  const track = bridge.listTracks()[trackIndex];
+  if (track === undefined) throw new Error(`Missing fixture track ${String(trackIndex)}`);
+  const clip = bridge.listClips(track.id).filter(isPlayableClip)[clipIndex];
+  if (clip === undefined) throw new Error(`Missing fixture clip ${String(clipIndex)}`);
+  return clip.id;
+}
 
 /**
  * A sloppy melody over C major: C4 (in scale), C#4 (off), F#4 (off), A4 (in scale).
@@ -67,8 +76,8 @@ describe('runScaleLock: read -> snap -> write round-trip vs FakeLiveBridge', () 
     // The default seeded Set: Drums (track 0) and Bass (track 1) each have one
     // Session MIDI clip; its scale is C minor [0,2,3,5,7,8,10].
     const bridge = FakeLiveBridge.seeded();
-    const drumsClip = sessionClipId(0, 0); // notes 36,38,36,38 (D2/E2-ish)
-    const bassClip = sessionClipId(1, 0); // notes 36,43
+    const drumsClip = clipIdAt(bridge, 0, 0); // notes 36,38,36,38 (D2/E2-ish)
+    const bassClip = clipIdAt(bridge, 1, 0); // notes 36,43
 
     const before0 = bridge.getNotes(drumsClip).map((n) => n.pitch);
     const before1 = bridge.getNotes(bassClip).map((n) => n.pitch);
@@ -125,8 +134,7 @@ describe('runScaleLock: read -> snap -> write round-trip vs FakeLiveBridge', () 
 describe('runScaleLock: typed errors roll the transaction back', () => {
   it('surfaces STALE_REFERENCE for an unknown / empty-slot clip id and commits no undo step', async () => {
     const bridge = FakeLiveBridge.withOneMidiClip(SLOPPY);
-    // track:0/clipslot:1/clip is the empty second slot in the withOneMidiClip fixture.
-    const staleId = sessionClipId(0, 1);
+    const staleId = makeSessionReference('clip', 'unknownclip00001');
     await expect(runScaleLock(bridge, { clipIds: [staleId], mode: 'nearest' })).rejects.toSatisfy(
       (e: unknown) => isBridgeErrorOfCode(e, 'STALE_REFERENCE'),
     );
@@ -134,9 +142,8 @@ describe('runScaleLock: typed errors roll the transaction back', () => {
   });
 
   it('surfaces WRONG_TYPE for an audio clip id and commits no undo step', async () => {
-    // The default seeded Set has an AUDIO arrangement clip at track:2/clip:0 (Vocals).
     const bridge = FakeLiveBridge.seeded();
-    const audioId = arrangementClipId(2, 0);
+    const audioId = clipIdAt(bridge, 2, 0);
     await expect(runScaleLock(bridge, { clipIds: [audioId], mode: 'nearest' })).rejects.toSatisfy(
       (e: unknown) => isBridgeErrorOfCode(e, 'WRONG_TYPE'),
     );
@@ -146,7 +153,7 @@ describe('runScaleLock: typed errors roll the transaction back', () => {
   it('rolls ALL clips back when one id in the batch is bad (no partial write)', async () => {
     const bridge = FakeLiveBridge.withOneMidiClip(SLOPPY);
     const good = bridge.firstClipId;
-    const bad = sessionClipId(0, 1); // empty slot -> STALE_REFERENCE
+    const bad = makeSessionReference('clip', 'unknownclip00002');
     const before = bridge.firstClip().notes.map((n) => n.pitch);
 
     await expect(runScaleLock(bridge, { clipIds: [good, bad], mode: 'nearest' })).rejects.toSatisfy(

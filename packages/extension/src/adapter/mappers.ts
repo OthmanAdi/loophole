@@ -2,12 +2,10 @@
  * Pure translation from live SDK objects to the serializable core DTOs the {@link
  * import("@othmanadi/loophole-core").LiveBridge} port speaks (02_BRIDGE_SPEC §9).
  *
- * Every mapper reads SDK getters and emits a plain DTO carrying NAMES and string
- * {@link import("@othmanadi/loophole-core").PathId}s only: no `Handle`, no `bigint`,
- * no SDK type ever crosses out of the adapter (02_BRIDGE_SPEC §3, the locked import
- * boundary). The path ids are passed in by the adapter (which knows the indices from
- * the resolve walk) or built with the core id builders, so they round-trip through the
- * {@link import("./resolver.js").Resolver}.
+ * Every mapper reads SDK getters and emits a plain DTO carrying names and opaque,
+ * session-scoped references only: no `Handle`, no `bigint`, and no SDK type crosses
+ * out of the adapter. The adapter
+ * obtains each reference from the shared {@link import("./reference-service.js").ReferenceService}.
  *
  * Sync vs async (01_SDK_MAP §0 Rule A): nearly every getter is synchronous, so most
  * mappers are sync. The sole exception is a {@link DeviceParameter}'s current value —
@@ -44,18 +42,16 @@ import {
   type ClipLocation,
   type ClipSlotId,
   type CuePointInfo,
-  cuePointId,
-  deviceId,
+  type CuePointId,
+  type DeviceId,
   type DeviceInfo,
   type DeviceParamInfo,
   type MixerInfo,
-  mixerVolumeParamId,
   type NoteDTO,
   type ParamId,
-  paramId,
-  sceneId,
+  type SceneId,
   type SceneInfo,
-  trackId,
+  type TrackId,
   type TrackInfo,
   type TrackKind,
   type TrackMixerInfo,
@@ -136,9 +132,9 @@ export function trackKind(track: Track<V>): TrackKind {
  * sync getters; the {@link MixerInfo} is built separately (it is async, because a
  * mixer parameter's value is async) and passed in, so this stays a thin shaping step.
  */
-export function trackInfo(track: Track<V>, index: number, mixer: MixerInfo): TrackInfo {
+export function trackInfo(track: Track<V>, id: TrackId, mixer: MixerInfo): TrackInfo {
   return {
-    id: trackId(index),
+    id,
     kind: trackKind(track),
     name: track.name,
     mute: track.mute,
@@ -167,13 +163,13 @@ export function clipInfo(
   id: ClipId,
   location: ClipLocation,
   slotId?: ClipSlotId,
+  sceneIndex?: number,
 ): ClipInfo {
   const isMidi = clip instanceof MidiClip;
   const base = {
     id,
     isMidi,
     kind: isMidi ? ('midi' as const) : ('audio' as const),
-    location,
     name: clip.name,
     startTime: clip.startTime,
     endTime: clip.endTime,
@@ -185,24 +181,29 @@ export function clipInfo(
     color: clip.color,
     muted: clip.muted,
   };
-  const withSlot = slotId === undefined ? base : { ...base, slotId };
-  if (clip instanceof AudioClip) {
-    return { ...withSlot, filePath: clip.filePath };
+  if (location === 'session') {
+    if (slotId === undefined || sceneIndex === undefined) {
+      throw new Error('Session clip mapping requires both slotId and sceneIndex.');
+    }
+    const session = { ...base, location, slotId, sceneIndex };
+    return clip instanceof AudioClip ? { ...session, filePath: clip.filePath } : session;
   }
-  return withSlot;
+  const arrangement = { ...base, location };
+  return clip instanceof AudioClip ? { ...arrangement, filePath: clip.filePath } : arrangement;
 }
 
 /**
  * An empty Session clip slot, reported by `listClips` so the model can see where it
  * may create a clip (DTO contract: `kind: 'empty'`, geometry zeroed, id == slot id).
  */
-export function emptySlotInfo(slotId: ClipSlotId): ClipInfo {
+export function emptySlotInfo(slotId: ClipSlotId, sceneIndex: number): ClipInfo {
   return {
     id: slotId,
     isMidi: false,
     kind: 'empty',
     location: 'session',
     slotId,
+    sceneIndex,
     name: '',
     startTime: 0,
     endTime: 0,
@@ -243,15 +244,10 @@ export async function paramInfo(param: DeviceParameter<V>, id: ParamId): Promise
  */
 export async function deviceInfo(
   device: Device<V>,
-  trackIndex: number,
-  deviceIndex: number,
+  id: DeviceId,
+  parameters: readonly DeviceParamInfo[],
 ): Promise<DeviceInfo> {
-  const parameters = await Promise.all(
-    device.parameters.map((param, index) =>
-      paramInfo(param, paramId(trackIndex, deviceIndex, index)),
-    ),
-  );
-  return { id: deviceId(trackIndex, deviceIndex), name: device.name, parameters };
+  return { id, name: device.name, parameters };
 }
 
 /**
@@ -261,9 +257,9 @@ export async function deviceInfo(
  */
 export async function trackMixerInfo(
   mixer: TrackMixer<V>,
-  trackIndex: number,
+  volumeId: ParamId,
 ): Promise<TrackMixerInfo> {
-  const volume = await paramInfo(mixer.volume, mixerVolumeParamId(trackIndex));
+  const volume = await paramInfo(mixer.volume, volumeId);
   return { volume };
 }
 
@@ -284,9 +280,9 @@ export async function mixerInfo(mixer: TrackMixer<V>): Promise<MixerInfo> {
  * "no Set-tempo override" as `null`, but the SDK's `Scene.tempo` always returns a
  * number, so a scene reports its effective tempo here (a faithful read of the surface).
  */
-export function sceneInfo(scene: Scene<V>, index: number): SceneInfo {
+export function sceneInfo(scene: Scene<V>, id: SceneId): SceneInfo {
   return {
-    id: sceneId(index),
+    id,
     name: scene.name,
     tempo: scene.tempo,
     signatureNumerator: scene.signatureNumerator,
@@ -298,6 +294,6 @@ export function sceneInfo(scene: Scene<V>, index: number): SceneInfo {
  * Build a {@link CuePointInfo} from a cue point's beat time + name and its index in
  * `song.cuePoints`. The cue point's own getters (`time`, `name`) are sync.
  */
-export function cuePointInfo(index: number, time: number, name: string): CuePointInfo {
-  return { id: cuePointId(index), time, name };
+export function cuePointInfo(id: CuePointId, time: number, name: string): CuePointInfo {
+  return { id, time, name };
 }

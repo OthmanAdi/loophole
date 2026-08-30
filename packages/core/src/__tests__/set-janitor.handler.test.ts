@@ -1,41 +1,28 @@
 /**
- * Ring 2 tests for the Set Janitor command handler against {@link FakeLiveBridge}
- * (03_EXTENSIONS_SPEC §5(f)). Seed a messy Set, run the handler with a chosen subset,
- * and pin the headline claims: chosen renames/recolors land, UNCHOSEN deletes do NOT
- * fire, chosen deletes DO, and value-only sweeps remain exactly one transaction.
+ * Set Janitor handler tests against the opaque-reference FakeLiveBridge.
  *
- * Structural deletes intentionally use separate undo steps so position-based ids can
- * be applied serially and deterministically, with no Ableton install.
+ * Issue selections are discovered from the fixture at runtime. No test reconstructs
+ * a target from an array position, which is the contract these tests prove.
  */
 
 import { describe, expect, it } from 'vitest';
 
+import {
+  isPlayableClip,
+  type ClipInfo,
+  type Issue,
+  type SetClipDTO,
+  type SetDTO,
+  type SetTrackDTO,
+  type TrackInfo,
+} from '../dtos.js';
 import { FakeLiveBridge } from '../fake-live-bridge.js';
 import { runSetJanitor } from '../handlers/set-janitor.js';
 import { detectIssues, planFixes } from '../transforms/janitor.js';
-import { sessionClipId, trackId } from '../ids.js';
-import type { ClipInfo, SetClipDTO, SetDTO, SetTrackDTO, TrackInfo } from '../dtos.js';
 
-// The issue ids the handler computes for FakeLiveBridge.seededMessySet(). Derived the
-// same way detectIssues derives them (`<kind>:<targetPathId>`), against the known
-// fixture layout: Bass (track 0) has an off-palette Bassline at slot 0; the
-// placeholder track "1-MIDI" (track 1) holds the placeholder clip "Audio 3" at slot
-// 0; the "Empty" audio track (track 2) is clip- and device-free.
-const ISSUE = {
-  emptyTrack: `emptyTrack:${trackId(2)}`,
-  renameTrack: `placeholderName:${trackId(1)}`,
-  renameClip: `placeholderName:${sessionClipId(1, 0)}`,
-  recolorClip: `offPaletteColor:${sessionClipId(0, 0)}`,
-  // Bass (track 0) slot 1 is the "Loop" clip with endMarker 6 > loopEnd 4.
-  loopOverrun: `loopOverrun:${sessionClipId(0, 1)}`,
-} as const;
-
-/**
- * Rebuild the same SetDTO the handler reads, so a test can assert exactly which
- * issues the through-the-bridge path sees (it mirrors the handler's readSet).
- */
 function readSetViaBridge(bridge: FakeLiveBridge): SetDTO {
   const toClip = (clip: ClipInfo): SetClipDTO => {
+    if (!isPlayableClip(clip)) throw new Error('empty slot leaked into Janitor input');
     const base = {
       id: clip.id,
       name: clip.name,
@@ -52,112 +39,148 @@ function readSetViaBridge(bridge: FakeLiveBridge): SetDTO {
     kind: track.kind,
     name: track.name,
     deviceCount: track.deviceCount,
-    clips: bridge
-      .listClips(track.id)
-      .filter((c) => c.kind !== 'empty')
-      .map(toClip),
+    clips: bridge.listClips(track.id).filter(isPlayableClip).map(toClip),
   });
   return { tracks: bridge.listTracks().map(toTrack) };
 }
 
-describe('runSetJanitor: detects the seeded mess through the bridge', () => {
+function detectedIssues(bridge: FakeLiveBridge): readonly Issue[] {
+  return detectIssues(readSetViaBridge(bridge));
+}
+
+function issueByKind(
+  bridge: FakeLiveBridge,
+  kind: Issue['kind'],
+  targetKind?: Issue['targetKind'],
+): Issue {
+  const issue = detectedIssues(bridge).find(
+    (candidate) =>
+      candidate.kind === kind && (targetKind === undefined || candidate.targetKind === targetKind),
+  );
+  if (issue === undefined) throw new Error(`Missing ${kind}/${targetKind ?? 'any'} fixture issue`);
+  return issue;
+}
+
+describe('runSetJanitor: detects the seeded mess through opaque bridge references', () => {
   it('finds the empty track, both placeholder names, and the off-palette color', () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    const ids = detectIssues(readSetViaBridge(bridge)).map((i) => i.id);
-    expect(ids).toContain(ISSUE.emptyTrack);
-    expect(ids).toContain(ISSUE.renameTrack);
-    expect(ids).toContain(ISSUE.renameClip);
-    expect(ids).toContain(ISSUE.recolorClip);
+    const issues = detectedIssues(bridge);
+
+    expect(issues.filter((issue) => issue.kind === 'emptyTrack')).toHaveLength(1);
+    expect(issues.filter((issue) => issue.kind === 'placeholderName')).toHaveLength(2);
+    expect(issues.filter((issue) => issue.kind === 'offPaletteColor')).toHaveLength(1);
+    expect(issues.find((issue) => issue.kind === 'emptyTrack')?.targetKind).toBe('track');
+    expect(
+      issues
+        .filter((issue) => issue.kind === 'placeholderName')
+        .map((issue) => issue.targetKind)
+        .sort(),
+    ).toEqual(['clip', 'track']);
   });
 
-  it('surfaces the planted loop-overrun through the bridge (endMarker now on ClipInfo)', () => {
-    // The fixture's Bass slot-1 clip has endMarker 6 > loopEnd 4. listClips now exposes
-    // endMarker, so the through-the-bridge path detects the overrun (the stage-3
-    // resolution of the former shared-surface gap).
+  it('surfaces the planted loop-overrun with the exact clip reference returned by the fake', () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    const overruns = detectIssues(readSetViaBridge(bridge)).filter((i) => i.kind === 'loopOverrun');
-    expect(overruns.map((i) => i.id)).toEqual([ISSUE.loopOverrun]);
-    expect(overruns[0]?.target).toBe(sessionClipId(0, 1));
+    const bass = bridge.listTracks().find((track) => track.name === 'Bass');
+    if (bass === undefined) throw new Error('Missing Bass fixture track');
+    const loop = bridge
+      .listClips(bass.id)
+      .filter(isPlayableClip)
+      .find((clip) => clip.name === 'Loop');
+    if (loop === undefined) throw new Error('Missing Loop fixture clip');
+
+    const overruns = detectedIssues(bridge).filter((issue) => issue.kind === 'loopOverrun');
+    expect(overruns).toHaveLength(1);
+    expect(overruns[0]?.target).toBe(loop.id);
+    expect(overruns[0]?.targetKind).toBe('clip');
   });
 });
 
-describe('runSetJanitor: applies a chosen subset with explicit undo phases', () => {
-  it('renames the chosen track + clip and recolors the chosen clip; one transaction', async () => {
+describe('runSetJanitor: applies chosen opaque targets with explicit undo phases', () => {
+  it('renames the chosen track and clip and recolors the chosen clip in one value transaction', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    expect(bridge.transactionCount).toBe(0);
+    const tracks = bridge.listTracks();
+    const bass = tracks.find((track) => track.name === 'Bass');
+    const placeholder = tracks.find((track) => track.name === '1-MIDI');
+    if (bass === undefined || placeholder === undefined) throw new Error('Missing Janitor fixture');
+    const placeholderIssues = detectedIssues(bridge).filter(
+      (issue) => issue.kind === 'placeholderName',
+    );
+    const recolor = issueByKind(bridge, 'offPaletteColor', 'clip');
 
     const result = await runSetJanitor(bridge, {
-      chosenIssueIds: [ISSUE.renameTrack, ISSUE.renameClip, ISSUE.recolorClip],
+      chosenIssueIds: [...placeholderIssues.map((issue) => issue.id), recolor.id],
     });
 
     expect(result.applied).toBe(3);
-    // Exactly ONE undo step for the whole sweep.
     expect(bridge.transactionCount).toBe(1);
-
-    // Track "1-MIDI" (index 1) renamed to the path-derived, non-placeholder "Track 2".
-    expect(bridge.listTracks()[1]?.name).toBe('Track 2');
-    // Clip "Audio 3" (slot 0) renamed to the path-derived "Clip 1".
-    expect(bridge.listClips(trackId(1))[0]?.name).toBe('Clip 1');
-    // Off-palette Bassline (12345) recolored to an on-palette value (no longer 12345).
-    const bassline = bridge.listClips(trackId(0))[0];
-    expect(bassline?.color).not.toBe(12345);
+    expect(bridge.listTracks().find((track) => track.id === placeholder.id)?.name).toBe('Track 2');
+    expect(bridge.listClips(placeholder.id).filter(isPlayableClip)[0]?.name).toBe('Clip 1');
+    expect(bridge.listClips(bass.id).filter(isPlayableClip)[0]?.color).not.toBe(12345);
   });
 
-  it('does NOT delete the empty track when its delete issue is unchosen', async () => {
+  it('does not delete the empty track when its delete issue is unchosen', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    expect(bridge.listTracks()).toHaveLength(3);
+    const rename = issueByKind(bridge, 'placeholderName', 'track');
+    const recolor = issueByKind(bridge, 'offPaletteColor', 'clip');
 
-    // Choose only the renames/recolor, NOT the empty-track delete.
-    await runSetJanitor(bridge, {
-      chosenIssueIds: [ISSUE.renameTrack, ISSUE.recolorClip],
-    });
+    await runSetJanitor(bridge, { chosenIssueIds: [rename.id, recolor.id] });
 
-    // The empty "Empty" track is still present: the unchosen delete did not fire.
     expect(bridge.listTracks()).toHaveLength(3);
-    expect(bridge.listTracks()[2]?.name).toBe('Empty');
+    expect(bridge.listTracks().some((track) => track.name === 'Empty')).toBe(true);
   });
 
-  it('DOES delete the empty track when its delete issue is chosen', async () => {
+  it('deletes the empty track when its delete issue is chosen', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
+    const empty = issueByKind(bridge, 'emptyTrack', 'track');
 
-    await runSetJanitor(bridge, { chosenIssueIds: [ISSUE.emptyTrack] });
+    await runSetJanitor(bridge, { chosenIssueIds: [empty.id] });
 
-    const names = bridge.listTracks().map((t) => t.name);
-    expect(names).toEqual(['Bass', '1-MIDI']);
+    expect(bridge.listTracks().map((track) => track.name)).toEqual(['Bass', '1-MIDI']);
   });
 
   it('groups value edits, then applies the structural delete as its own undo step', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    expect(bridge.transactionCount).toBe(0);
+    const rename = issueByKind(bridge, 'placeholderName', 'track');
+    const recolor = issueByKind(bridge, 'offPaletteColor', 'clip');
+    const empty = issueByKind(bridge, 'emptyTrack', 'track');
+    const bass = bridge.listTracks().find((track) => track.name === 'Bass');
+    if (bass === undefined) throw new Error('Missing Bass fixture track');
 
     const result = await runSetJanitor(bridge, {
-      chosenIssueIds: [ISSUE.renameTrack, ISSUE.recolorClip, ISSUE.emptyTrack],
+      chosenIssueIds: [rename.id, recolor.id, empty.id],
     });
 
     expect(result.applied).toBe(3);
     expect(bridge.transactionCount).toBe(2);
-    // Delete landed (Empty gone), rename landed (track 1 -> "Track 2"), recolor landed.
-    expect(bridge.listTracks().map((t) => t.name)).toEqual(['Bass', 'Track 2']);
-    expect(bridge.listClips(trackId(0))[0]?.color).not.toBe(12345);
+    expect(bridge.listTracks().map((track) => track.name)).toEqual(['Bass', 'Track 2']);
+    expect(bridge.listClips(bass.id).filter(isPlayableClip)[0]?.color).not.toBe(12345);
   });
 
   it('applies nothing and opens no transaction when no issue is chosen', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    const result = await runSetJanitor(bridge, { chosenIssueIds: [] });
-    expect(result.applied).toBe(0);
+
+    await expect(runSetJanitor(bridge, { chosenIssueIds: [] })).resolves.toEqual({ applied: 0 });
     expect(bridge.transactionCount).toBe(0);
   });
 
-  it('planFixes over the chosen subset yields one rename, one recolor, one delete', () => {
-    // A direct transform check on the same chosen subset the handler uses, so the
-    // handler's "deletes only for chosen delete-fixes" is grounded in the plan too.
+  it('plans one typed rename, recolor, and delete for the chosen subset', () => {
     const bridge = FakeLiveBridge.seededMessySet();
-    const issues = detectIssues(readSetViaBridge(bridge));
-    const fixes = planFixes(issues, [ISSUE.renameTrack, ISSUE.recolorClip, ISSUE.emptyTrack]);
-    expect(fixes.map((f) => f.kind).sort()).toEqual(['deleteTrack', 'recolor', 'rename']);
-    // The delete fix carries no value (marked distinctly).
-    const del = fixes.find((f) => f.kind === 'deleteTrack');
-    expect(del?.name).toBeUndefined();
-    expect(del?.color).toBeUndefined();
+    const issues = detectedIssues(bridge);
+    const rename = issues.find(
+      (issue) => issue.kind === 'placeholderName' && issue.targetKind === 'track',
+    );
+    const recolor = issues.find((issue) => issue.kind === 'offPaletteColor');
+    const empty = issues.find((issue) => issue.kind === 'emptyTrack');
+    if (rename === undefined || recolor === undefined || empty === undefined) {
+      throw new Error('Missing selected Janitor issues');
+    }
+
+    const fixes = planFixes(issues, [rename.id, recolor.id, empty.id]);
+
+    expect(fixes.map((fix) => fix.kind).sort()).toEqual(['deleteTrack', 'recolor', 'rename']);
+    expect(fixes.map((fix) => fix.targetKind).sort()).toEqual(['clip', 'track', 'track']);
+    const deletion = fixes.find((fix) => fix.kind === 'deleteTrack');
+    expect(deletion?.name).toBeUndefined();
+    expect(deletion?.color).toBeUndefined();
   });
 });

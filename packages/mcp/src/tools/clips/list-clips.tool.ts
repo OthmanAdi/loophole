@@ -1,7 +1,7 @@
 /**
  * Tool 3 — `live_list_clips` (read).
  *
- * See what clips exist on one track, with the ids needed to read or write them.
+ * See what clips exist on one track, with the opaque references needed to read or write them.
  * Reports Session-view slots (including empty ones, so the model knows where it
  * can create a clip) and Arrangement clips, each tagged with its location and
  * kind (02_BRIDGE_SPEC §5, tool 3).
@@ -9,13 +9,13 @@
 
 import { z } from 'zod';
 
-import { makePathId, type ClipInfo } from '@othmanadi/loophole-core';
+import type { ClipInfo } from '@othmanadi/loophole-core';
 
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { TrackId } from '../../schemas/primitives.js';
+import { TrackReference } from '../../schemas/primitives.js';
 
-const inputSchema = z.object({ trackId: TrackId }).strict();
+const inputSchema = z.object({ trackId: TrackReference }).strict();
 
 /** Shape the bridge's flat ClipInfo[] into session vs arrangement groups. */
 function shapeClips(clips: readonly ClipInfo[]): {
@@ -49,9 +49,9 @@ export const listClipsTool = defineTool({
   name: 'live_list_clips',
   title: 'List clips',
   description:
-    'List the clips on one track: Session-view slots (empty slots included, so you can see ' +
-    'where to create a clip) and Arrangement clips, each with its stable id, name, and kind ' +
-    '(midi / audio / empty). Pass a clip id to live_get_notes / live_set_notes, or a slot id ' +
+    'List the clips on one current track reference: Session-view slots (empty slots included, so you can see ' +
+    'where to create a clip) and Arrangement clips, each with its opaque reference, name, and kind ' +
+    '(midi / audio / empty). Pass a clip reference to live_get_notes / live_set_notes, or a slot reference ' +
     'to live_create_midi_clip.',
   inputSchema,
   annotations: {
@@ -61,7 +61,7 @@ export const listClipsTool = defineTool({
     openWorldHint: false,
   },
   handle: (args, bridge) => {
-    const trackId = makePathId(args.trackId);
+    const trackId = args.trackId;
     const clips = bridge.listClips(trackId);
     const { session, arrangement } = shapeClips(clips);
     const data = { trackId, session, arrangement };

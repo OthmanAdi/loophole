@@ -6,7 +6,7 @@
  * payloads, so without a negative control a silent no-op bug in the walker would
  * let every "no forbidden shape" assertion pass vacuously. These tests plant the
  * forbidden shapes and assert the scanner THROWS, proving it actually inspects the
- * graph; and confirm it passes a clean string-id payload.
+ * graph; and confirm it passes a clean opaque-reference payload.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -30,18 +30,45 @@ describe('assertNoForbiddenShapes catches forbidden host shapes (negative contro
     );
   });
 
-  it('throws on a numeric id (host id) where a string path id is required', () => {
+  it('throws on a numeric id (host id) where a string reference is required', () => {
     expect(() => assertNoForbiddenShapes({ id: 42, name: 'Drums' })).toThrow(/numeric id/i);
   });
 
-  it('passes a clean payload of string path ids and plain JSON scalars', () => {
+  it('throws on locator or fingerprint keys at any nesting depth', () => {
+    expect(() => assertNoForbiddenShapes({ locator: 'song.tracks[0]' })).toThrow(
+      /locator\/fingerprint/i,
+    );
+    expect(() =>
+      assertNoForbiddenShapes({ nested: { structuralFingerprint: 'track:0|clip:1' } }),
+    ).toThrow(/locator\/fingerprint/i);
+  });
+
+  it('throws on legacy positional or malformed values in reference-named fields', () => {
+    expect(() => assertNoForbiddenShapes({ trackId: 'track:0' })).toThrow(/positional reference/i);
+    expect(() => assertNoForbiddenShapes({ clipId: 'lhref_clip_too-short' })).toThrow(
+      /malformed or positional reference/i,
+    );
+    expect(() => assertNoForbiddenShapes({ parameterId: 99 })).toThrow(/numeric id\/reference/i);
+  });
+
+  it('allows intentional numeric domain metadata such as sceneIndex', () => {
     expect(() =>
       assertNoForbiddenShapes({
-        id: 'track:0',
+        id: 'lhref_scn_0123456789abcdef',
+        sceneIndex: 2,
+        count: 3,
+      }),
+    ).not.toThrow();
+  });
+
+  it('passes a clean payload of opaque references and plain JSON scalars', () => {
+    expect(() =>
+      assertNoForbiddenShapes({
+        id: 'lhref_trk_0123456789abcdef',
         name: 'Drums',
         notes: [{ pitch: 36, startTime: 0, duration: 0.25, velocity: 100 }],
-        nested: { clipId: 'track:0/clipslot:0/clip', count: 4 },
-        list: ['track:0', 'track:1'],
+        nested: { clipId: 'lhref_clip_0123456789abcdef', count: 4 },
+        list: ['lhref_trk_0123456789abcdef', 'lhref_trk_fedcba9876543210'],
         nothing: null,
       }),
     ).not.toThrow();

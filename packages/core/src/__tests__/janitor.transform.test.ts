@@ -1,5 +1,5 @@
 /**
- * Ring 1 unit tests for the Set Janitor pure transforms (03_EXTENSIONS_SPEC §5(f)).
+ * Unit tests for the Set Janitor pure transforms.
  * No bridge, no I/O: hand-built {@link SetDTO}s in, exact {@link Issue} / {@link Fix}
  * arrays out. This is the bulk of the Set Janitor assertions.
  */
@@ -7,8 +7,39 @@
 import { describe, expect, it } from 'vitest';
 
 import type { SetClipDTO, SetDTO, SetTrackDTO } from '../dtos.js';
-import { sessionClipId, trackId } from '../ids.js';
+import type { ClipId, TrackId } from '../ids.js';
+import { makeSessionReference } from '../references.js';
 import { DEFAULT_CLIP_PALETTE, detectIssues, planFixes } from '../transforms/janitor.js';
+
+// Logical fixture keys are mapped to opaque tokens that do not encode positions.
+// Pure transform tests need stable equality, not a bridge registry, so this small
+// cache supplies valid branded references while keeping path parsing out of the tests.
+let nextReference = 1;
+const trackReferences = new Map<number, TrackId>();
+const clipReferences = new Map<string, ClipId>();
+
+function trackId(key: number): TrackId {
+  const existing = trackReferences.get(key);
+  if (existing !== undefined) return existing;
+  const created = makeSessionReference(
+    'track',
+    `janitor_track_ref_${String(nextReference++).padStart(8, '0')}`,
+  );
+  trackReferences.set(key, created);
+  return created;
+}
+
+function sessionClipId(trackKey: number, clipKey: number): ClipId {
+  const key = `${String(trackKey)}:${String(clipKey)}`;
+  const existing = clipReferences.get(key);
+  if (existing !== undefined) return existing;
+  const created = makeSessionReference(
+    'clip',
+    `janitor_clip_ref_${String(nextReference++).padStart(8, '0')}`,
+  );
+  clipReferences.set(key, created);
+  return created;
+}
 
 // --- small builders so each test states only the fields its rule cares about ---
 
@@ -40,8 +71,8 @@ function set(tracks: readonly SetTrackDTO[]): SetDTO {
 
 /** The rename name a fix list assigns to a given target (for idempotence checks). */
 function nameFor(
-  fixes: readonly { kind: string; target: string; name?: string }[],
-  target: string,
+  fixes: readonly { kind: string; target: TrackId | ClipId; name?: string }[],
+  target: TrackId | ClipId,
 ): string {
   return fixes.find((f) => f.kind === 'rename' && f.target === target)?.name ?? '';
 }
@@ -52,6 +83,7 @@ describe('detectIssues: empty tracks', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.kind).toBe('emptyTrack');
     expect(result[0]?.target).toBe(trackId(0));
+    expect(result[0]?.targetKind).toBe('track');
   });
 
   it('does NOT flag a track that has a device but no clips', () => {
@@ -84,6 +116,7 @@ describe('detectIssues: placeholder names', () => {
     const placeholders = detectIssues(set([t])).filter((i) => i.kind === 'placeholderName');
     expect(placeholders).toHaveLength(1);
     expect(placeholders[0]?.target).toBe(sessionClipId(0, 0));
+    expect(placeholders[0]?.targetKind).toBe('clip');
   });
 
   it('flags a "1-MIDI" track name', () => {
@@ -115,6 +148,7 @@ describe('detectIssues: loop overrun', () => {
     const overruns = detectIssues(set([t])).filter((i) => i.kind === 'loopOverrun');
     expect(overruns).toHaveLength(1);
     expect(overruns[0]?.target).toBe(sessionClipId(0, 0));
+    expect(overruns[0]?.targetKind).toBe('clip');
   });
 
   it('does NOT flag a clip whose endMarker equals loopEnd', () => {
@@ -143,6 +177,7 @@ describe('detectIssues: off-palette color', () => {
     const offPalette = detectIssues(set([t])).filter((i) => i.kind === 'offPaletteColor');
     expect(offPalette).toHaveLength(1);
     expect(offPalette[0]?.target).toBe(sessionClipId(0, 0));
+    expect(offPalette[0]?.targetKind).toBe('clip');
   });
 
   it('does NOT flag a clip whose color is on the palette (incl. 0 = default)', () => {
@@ -234,21 +269,23 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
     expect(fixes).toHaveLength(1);
     expect(fixes[0]?.kind).toBe('deleteTrack');
     expect(fixes[0]?.target).toBe(trackId(2));
+    expect(fixes[0]?.targetKind).toBe('track');
     // Destructive fixes carry no value (what marks them distinct from rename/recolor).
     expect(fixes[0]?.name).toBeUndefined();
     expect(fixes[0]?.color).toBeUndefined();
   });
 
-  it('rename carries a path-derived, non-placeholder name; recolor an on-palette color', () => {
+  it('rename carries an ordinal-derived, non-placeholder name; recolor an on-palette color', () => {
     const rename = issues.find((i) => i.kind === 'placeholderName' && i.target === trackId(1))!;
     const recolor = issues.find((i) => i.kind === 'offPaletteColor')!;
     const fixes = planFixes(issues, [rename.id, recolor.id]);
 
     const renameFix = fixes.find((f) => f.kind === 'rename');
     const recolorFix = fixes.find((f) => f.kind === 'recolor');
-    // The "1-MIDI" track (index 1) renames to the 1-based "Track 2", derived from the
-    // path, NOT from the old name.
+    // The second track renames to the ordinal "Track 2", derived from Set order,
+    // never by decoding the opaque target and never from the old name.
     expect(renameFix?.name).toBe('Track 2');
+    expect(renameFix?.targetKind).toBe('track');
     // The recolor steers to the first non-default palette entry.
     expect(recolorFix?.color).not.toBe(12345);
     expect(DEFAULT_CLIP_PALETTE.has(recolorFix?.color ?? -1)).toBe(true);
@@ -300,7 +337,9 @@ describe('planFixes: only chosen issues, deletes marked distinctly', () => {
     expect(planFixes(overrunIssues, [overrun!.id])).toEqual([]);
   });
 
-  it('ignores unknown chosen ids', () => {
-    expect(planFixes(issues, ['emptyTrack:track:999', 'nonsense'])).toEqual([]);
+  it('ignores chosen ids that are absent from the detected issue set', () => {
+    expect(planFixes(issues, ['emptyTrack:lhref_trk_not-issued-reference', 'nonsense'])).toEqual(
+      [],
+    );
   });
 });

@@ -25,7 +25,7 @@
 import type {
   PlanResult,
   Placement,
-  Section,
+  ResolvedSection,
   SessionClipDTO,
   SessionDTO,
   TimeSig,
@@ -51,7 +51,7 @@ export function beatsPerBar(sig: TimeSig): number {
  * the section maps to a scene index outside the Session (a defensive fallback rather
  * than a throw, since a malformed map should still plan the rest of the song).
  */
-function sectionTimeSig(section: Section, session: SessionDTO, fallback: TimeSig): TimeSig {
+function sectionTimeSig(section: ResolvedSection, session: SessionDTO, fallback: TimeSig): TimeSig {
   const scene = session.scenes[section.sceneIndex];
   return scene?.timeSig ?? fallback;
 }
@@ -87,14 +87,15 @@ function clipsInScene(session: SessionDTO, sceneIndex: number): readonly Session
  * structure (and its locators) is complete even where a section is silent.
  *
  * @param session the Session as plain data (scenes, tracks, and the per-scene clips).
- * @param sectionMap the user's ordered section list (name, scene, bars, optional color).
+ * @param sectionMap the resolved section list, with scene indices derived from opaque
+ *   scene references immediately before planning.
  * @param timeSig the fallback time signature, used for any section whose scene does
  *   not report one (callers default this to 4/4 per 03_EXTENSIONS_SPEC §4(d)).
  * @returns the {@link Placement}s to write and the section-boundary cue points.
  */
 export function planArrangement(
   session: SessionDTO,
-  sectionMap: readonly Section[],
+  sectionMap: readonly ResolvedSection[],
   timeSig: TimeSig,
 ): PlanResult {
   const placements: Placement[] = [];

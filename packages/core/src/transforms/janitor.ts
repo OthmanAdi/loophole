@@ -12,13 +12,12 @@
  * and writes the fixes back; rings 1 keeps the rule logic here, Live-free.
  *
  * Detected issue id scheme (stable, derived from kind + target so a UI can round-trip
- * a selection without a side table): `"<kind>:<target>"`, e.g.
- * `"emptyTrack:track:2"`, `"placeholderName:track:1"`, `"offPaletteColor:track:0/clipslot:0/clip"`.
- * The target segment is itself a path id, so the id reads as `kind` + `:` + the path.
+ * a selection without a side table): `"<kind>:<opaque-reference>"`. Target type and
+ * display ordinal are carried as fields, never decoded from the reference.
  */
 
 import type { Fix, Issue, IssueId, IssueKind, SetClipDTO, SetDTO, SetTrackDTO } from '../dtos.js';
-import { parsePath, type PathId, type PathSegment } from '../ids.js';
+import type { ClipId, TrackId } from '../ids.js';
 
 /**
  * The default Live clip-color palette the off-palette rule checks against.
@@ -54,8 +53,8 @@ export const DEFAULT_CLIP_PALETTE: ReadonlySet<number> = new Set<number>([
  */
 const PLACEHOLDER_NAME = /^(\d+-)?(MIDI|Audio)( \d+)?$/;
 
-/** Build a stable {@link IssueId} from an issue kind and its target path id. */
-function issueId(kind: IssueKind, target: PathId): IssueId {
+/** Build a stable {@link IssueId} from an issue kind and opaque target reference. */
+function issueId(kind: IssueKind, target: TrackId | ClipId): IssueId {
   return `${kind}:${target}`;
 }
 
@@ -99,12 +98,13 @@ export function detectIssues(
 ): Issue[] {
   const issues: Issue[] = [];
 
-  for (const track of set.tracks) {
+  for (const [trackIndex, track] of set.tracks.entries()) {
     if (isEmptyTrack(track)) {
       issues.push({
         id: issueId('emptyTrack', track.id),
         kind: 'emptyTrack',
         target: track.id,
+        targetKind: 'track',
         detail: `Track "${track.name}" is empty (no clips, no devices).`,
       });
     }
@@ -114,16 +114,20 @@ export function detectIssues(
         id: issueId('placeholderName', track.id),
         kind: 'placeholderName',
         target: track.id,
+        targetKind: 'track',
+        suggestedName: `Track ${String(trackIndex + 1)}`,
         detail: `Track name "${track.name}" looks like a Live default.`,
       });
     }
 
-    for (const clip of track.clips) {
+    for (const [clipIndex, clip] of track.clips.entries()) {
       if (isPlaceholderName(clip.name)) {
         issues.push({
           id: issueId('placeholderName', clip.id),
           kind: 'placeholderName',
           target: clip.id,
+          targetKind: 'clip',
+          suggestedName: `Clip ${String(clipIndex + 1)}`,
           detail: `Clip name "${clip.name}" looks like a Live default.`,
         });
       }
@@ -133,6 +137,7 @@ export function detectIssues(
           id: issueId('offPaletteColor', clip.id),
           kind: 'offPaletteColor',
           target: clip.id,
+          targetKind: 'clip',
           detail: `Clip "${clip.name}" uses an off-palette color (${String(clip.color)}).`,
         });
       }
@@ -142,6 +147,7 @@ export function detectIssues(
           id: issueId('loopOverrun', clip.id),
           kind: 'loopOverrun',
           target: clip.id,
+          targetKind: 'clip',
           detail: `Clip "${clip.name}" overruns its loop (content ends at ${String(
             clip.endMarker,
           )}, loop ends at ${String(clip.loopEnd)}).`,
@@ -151,47 +157,6 @@ export function detectIssues(
   }
 
   return issues;
-}
-
-/**
- * The proposed new name for a placeholder-named track or clip, derived from the
- * object's `target` path id (never from its current name), so the result is:
- *  - **deterministic** (the same target always yields the same name), and
- *  - **idempotent against the detector** — it is a `"Track N"` / `"Clip N"` label,
- *    which {@link PLACEHOLDER_NAME} does NOT match (that pattern only matches the
- *    `MIDI` / `Audio` Live defaults), so a second sweep does not re-flag the renamed
- *    object. (Normalising `1-MIDI` to `MIDI` would re-trip the rule; this does not.)
- *
- * `N` is the 1-based position taken from the path: a track id's track index, or a
- * clip id's clip-slot index (Session clips) / arrangement-clip index. Kept
- * deliberately plain: Janitor is the structural sweep, not a content-aware renamer
- * (03_EXTENSIONS_SPEC §5(d) defers descriptive naming to RNMR); it only replaces a
- * placeholder with a clean, intentional-looking label. Decoupled from the issue
- * `detail` text (which the DTO docs describe as editable UI prose), so the fix logic
- * does not depend on presentation strings.
- */
-function suggestedName(target: PathId): string {
-  const segments = parsePath(target);
-  const leaf = segments[segments.length - 1];
-  // A clip target ends in a `clip` segment: name it from the clip-slot index (Session
-  // clip: track:N/clipslot:M/clip) or the arrangement clip index (track:N/clip:M).
-  if (leaf?.kind === 'clip') {
-    const slot = segments.find((s) => s.kind === 'clipslot');
-    const index = indexOf(slot) ?? indexOf(leaf) ?? 0;
-    return `Clip ${String(index + 1)}`;
-  }
-  // Otherwise it is a track target (track:N): name it from the track index.
-  const index = indexOf(leaf) ?? 0;
-  return `Track ${String(index + 1)}`;
-}
-
-/**
- * The `index` of a path segment, or `null` when the segment is index-less (a bare
- * terminal `clip` / `mixer` / `volume`) or absent. Keeps {@link suggestedName} from
- * reaching into a segment that has no `index` under `noUncheckedIndexedAccess`.
- */
-function indexOf(segment: PathSegment | undefined): number | null {
-  return segment !== undefined && 'index' in segment ? segment.index : null;
 }
 
 /**
@@ -269,16 +234,26 @@ export function planFixes(
     }
     switch (kind) {
       case 'rename':
-        fixes.push({ kind, target: issue.target, name: suggestedName(issue.target) });
+        fixes.push({
+          kind,
+          target: issue.target,
+          targetKind: issue.targetKind,
+          name: issue.suggestedName ?? (issue.targetKind === 'track' ? 'Track' : 'Clip'),
+        });
         break;
       case 'recolor':
-        fixes.push({ kind, target: issue.target, color: paletteTargetColor(palette) });
+        fixes.push({
+          kind,
+          target: issue.target,
+          targetKind: issue.targetKind,
+          color: paletteTargetColor(palette),
+        });
         break;
       case 'deleteTrack':
       case 'deleteClip':
         // Destructive: no value. The absent name/color is what marks a delete fix
         // distinctly from a rename/recolor.
-        fixes.push({ kind, target: issue.target });
+        fixes.push({ kind, target: issue.target, targetKind: issue.targetKind });
         break;
     }
   }

@@ -1,22 +1,21 @@
 /**
  * Reverse resolution: turn the SDK {@link Handle}(s) a context-menu command receives
- * into the stable core {@link PathId}s the pure command handlers drive.
+ * into opaque session references the pure command handlers drive.
  *
- * The forward direction (path id to a fresh `Handle`) lives in {@link Resolver}; this
- * is the inverse, and it is the ONE new SDK-facing capability Wave C stage 2 needs. A
- * context-menu action does not hand us a path id; it hands us the object the user
- * right-clicked, as a `Handle` (clip / track scopes) or a selection of handles
- * (`ClipSlotSelection.selected_clip_slots`, `ArrangementSelection.selected_lanes`). To
- * call a handler that speaks `ClipId` / `TrackId`, we locate that object's position in
- * `application.song` and rebuild its path id, exactly the address the {@link Resolver}
- * re-resolves on the next call.
+ * The forward direction (opaque reference to a fresh SDK object) lives in
+ * {@link Resolver}; this is the inverse, and it is the SDK-facing capability context
+ * commands need. A context-menu action hands us the object the user right-clicked as a
+ * `Handle` (clip / track scopes) or a selection of handles
+ * (`ClipSlotSelection.selected_clip_slots`, `ArrangementSelection.selected_lanes`). We
+ * locate that object in `application.song` and ask the shared `ReferenceService` to
+ * issue the `ClipId` / `TrackId` the handler receives.
  *
  * How the position is found: every SDK object extends `DataModelObject`, which exposes
  * a `readonly handle: Handle` (`{ id: bigint }`). So we resolve the received handle to
  * its typed object, then walk the relevant array (`song.tracks`, `track.clipSlots`,
- * `track.arrangementClips`) and match by `handle.id` equality, the same identity check
- * the adapter already uses for cue points (`live-bridge.ableton.ts`: `cp.handle.id ===
- * created.handle.id`). The matched index becomes the path-id segment.
+ * `track.arrangementClips`) and match exact object identity plus `handle.id`. The
+ * matched position is private locator data supplied only when issuing the opaque
+ * reference; no handle, `bigint`, or position leaves this adapter.
  *
  * This file imports `@ableton-extensions/sdk` (types + `instanceof` classes), so it is
  * an adapter-layer file: excluded from the committed CI tsconfig, typechecked locally
@@ -41,36 +40,34 @@ import {
   MidiTrack,
   type Track,
 } from '@ableton-extensions/sdk';
-import {
-  arrangementClipId,
-  type ClipId,
-  sessionClipId,
-  type TrackId,
-  trackId,
-} from '@othmanadi/loophole-core';
+import { type ClipId, type TrackId } from '@othmanadi/loophole-core';
+import { ReferenceService } from './reference-service.js';
 import type { V } from './resolver.js';
 
 /**
- * Locate `target` among `objects` by `Handle` id and return its index, or `-1` when it
- * is not present. The identity comparison is `handle.id` (a `bigint`) equality, the
- * same check the adapter uses elsewhere; SDK object caching means the same Live object
- * yields the same handle id, so this is stable within a resolution.
+ * Locate `target` among `objects` by exact object identity plus its `Handle` id and
+ * return its index, or `-1` when it is not present. Both checks prevent a distinct
+ * object that reuses a host id from being selected by position.
  */
-function indexByHandle(objects: readonly DataModelObject<V>[], target: Handle): number {
-  return objects.findIndex((object) => object.handle.id === target.id);
+function indexByIdentity<T extends DataModelObject<V>>(objects: readonly T[], target: T): number {
+  return objects.findIndex((object) => object === target && object.handle.id === target.handle.id);
 }
 
 /**
  * Resolve a right-clicked clip {@link Handle} (from a `"MidiClip"` / `"AudioClip"`
- * scope) to its stable {@link ClipId} by finding which track and slot/arrangement
- * position holds it. Searches each track's Session clip slots first, then its
- * Arrangement clips, matching by `handle.id`.
+ * scope) to an opaque session {@link ClipId} by finding which track and
+ * slot/arrangement location holds it. Searches each track's Session clip slots first,
+ * then its Arrangement clips, matching by `handle.id`.
  *
  * @returns the clip's {@link ClipId}, or `null` if the clip is not found in the tree
  *   (deleted between the right-click and now, or otherwise unreachable). Callers turn a
  *   `null` into a user-facing "could not locate the clip" rather than guessing.
  */
-export function clipIdFromHandle(context: ExtensionContext<V>, handle: Handle): ClipId | null {
+export function clipIdFromHandle(
+  context: ExtensionContext<V>,
+  references: ReferenceService,
+  handle: Handle,
+): ClipId | null {
   // Resolve to the typed clip so a single matched handle is reused by identity below.
   const clip = context.getObjectFromHandle(handle, DataModelObject) as DataModelObject<V>;
   const song = context.application.song;
@@ -83,15 +80,19 @@ export function clipIdFromHandle(context: ExtensionContext<V>, handle: Handle): 
     const slots = track.clipSlots;
     for (let s = 0; s < slots.length; s += 1) {
       const slot = slots[s];
-      if (slot?.clip != null && slot.clip.handle.id === clip.handle.id) {
-        return sessionClipId(t, s);
+      if (slot?.clip === clip && slot.clip.handle.id === clip.handle.id) {
+        return references.issueClip(slot.clip, t, s);
       }
     }
     const arrangementClips = track.arrangementClips;
     for (let c = 0; c < arrangementClips.length; c += 1) {
       const arrangementClip = arrangementClips[c];
-      if (arrangementClip !== undefined && arrangementClip.handle.id === clip.handle.id) {
-        return arrangementClipId(t, c);
+      if (
+        arrangementClip !== undefined &&
+        arrangementClip === clip &&
+        arrangementClip.handle.id === clip.handle.id
+      ) {
+        return references.issueClip(arrangementClip, t, c);
       }
     }
   }
@@ -100,15 +101,19 @@ export function clipIdFromHandle(context: ExtensionContext<V>, handle: Handle): 
 
 /**
  * Resolve a right-clicked track {@link Handle} (from an `"AudioTrack"` / `"MidiTrack"`
- * scope) to its stable {@link TrackId} by its index in `song.tracks`.
+ * scope) to an opaque session {@link TrackId} by locating it in `song.tracks`.
  *
  * @returns the {@link TrackId}, or `null` if the track is not found (deleted / moved
  *   off the indexed list).
  */
-export function trackIdFromHandle(context: ExtensionContext<V>, handle: Handle): TrackId | null {
+export function trackIdFromHandle(
+  context: ExtensionContext<V>,
+  references: ReferenceService,
+  handle: Handle,
+): TrackId | null {
   const track = context.getObjectFromHandle(handle, DataModelObject) as DataModelObject<V>;
-  const index = indexByHandle(context.application.song.tracks, track.handle);
-  return index < 0 ? null : trackId(index);
+  const index = indexByIdentity(context.application.song.tracks, track);
+  return index < 0 ? null : references.issueTrack(context.application.song.tracks[index]!, index);
 }
 
 /**
@@ -122,6 +127,7 @@ export function trackIdFromHandle(context: ExtensionContext<V>, handle: Handle):
  */
 export function midiClipIdsFromSlotSelection(
   context: ExtensionContext<V>,
+  references: ReferenceService,
   selection: ClipSlotSelection,
 ): ClipId[] {
   const song = context.application.song;
@@ -137,7 +143,7 @@ export function midiClipIdsFromSlotSelection(
     if (clip == null || !(clip instanceof MidiClip)) {
       continue;
     }
-    const id = sessionClipId(located.trackIndex, located.slotIndex);
+    const id = references.issueClip(clip, located.trackIndex, located.slotIndex);
     if (!seen.has(id)) {
       seen.add(id);
       ids.push(id);
@@ -162,7 +168,7 @@ function locateSlot(
     if (track === undefined) {
       continue;
     }
-    const index = indexByHandle(track.clipSlots, slotObject.handle);
+    const index = indexByIdentity(track.clipSlots, slotObject);
     if (index >= 0) {
       const slot = track.clipSlots[index];
       if (slot !== undefined) {
@@ -184,6 +190,7 @@ function locateSlot(
  */
 export function audioTrackSelectionToTargets(
   context: ExtensionContext<V>,
+  references: ReferenceService,
   selection: ArrangementSelection,
 ): { trackIds: TrackId[]; startBeat: number; endBeat: number } {
   const tracks = context.application.song.tracks;
@@ -194,11 +201,13 @@ export function audioTrackSelectionToTargets(
     if (!(lane instanceof AudioTrack)) {
       continue;
     }
-    const index = indexByHandle(tracks, lane.handle);
+    const index = indexByIdentity(tracks, lane);
     if (index < 0) {
       continue;
     }
-    const id = trackId(index);
+    const track = tracks[index];
+    if (track === undefined) continue;
+    const id = references.issueTrack(track, index);
     if (!seen.has(id)) {
       seen.add(id);
       ids.push(id);

@@ -68,44 +68,10 @@ export type {
   TimeSig,
 } from './dtos.js';
 
-// Stable string path ids (handles never cross this boundary).
-export {
-  arrangementClipId,
-  buildPath,
-  clipSlotId,
-  cuePointId,
-  deviceId,
-  leafKind,
-  leafSegment,
-  makePathId,
-  mixerVolumeParamId,
-  paramId,
-  parsePath,
-  PathIdParseError,
-  returnTrackId,
-  sceneId,
-  sessionClipId,
-  trackId,
-  tryParsePath,
-} from './ids.js';
-export type {
-  ClipId,
-  ClipSegmentKind,
-  ClipSlotId,
-  CuePointId,
-  DeviceId,
-  IndexedSegmentKind,
-  MixerSegmentKind,
-  ParamId,
-  PathId,
-  PathSegment,
-  SceneId,
-  SegmentKind,
-  TrackId,
-} from './ids.js';
+// Opaque session references (handles and positional locators never cross this boundary).
+export type { ClipId, ClipSlotId, CuePointId, DeviceId, ParamId, SceneId, TrackId } from './ids.js';
 
-// Opaque, session-scoped references. These are additive while callers migrate away
-// from positional path ids; the bounded registry contains no Node or SDK dependency.
+// The bounded registry contains no Node or SDK dependency.
 export {
   isSessionReferenceOfKind,
   makeSessionReference,

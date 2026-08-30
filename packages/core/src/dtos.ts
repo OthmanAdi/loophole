@@ -4,22 +4,13 @@
  * These are the shapes the tool layer and, eventually, the MCP client see. They are
  * pure JSON: numbers, strings, booleans, arrays, and nested DTOs. No Ableton SDK
  * type, no `Handle`, and no `bigint` ever leaks into this file. Object references
- * are carried as string {@link PathId}s, never as host handles.
+ * are carried as opaque session references, never as host handles or positional paths.
  *
  * The DTO field names mirror the SDK surface in API_REFERENCE.md so the mapping in
  * the `AbletonLiveBridge` adapter stays a near-mechanical translation.
  */
 
-import type {
-  ClipId,
-  ClipSlotId,
-  CuePointId,
-  DeviceId,
-  ParamId,
-  PathId,
-  SceneId,
-  TrackId,
-} from './ids.js';
+import type { ClipId, ClipSlotId, CuePointId, DeviceId, ParamId, SceneId, TrackId } from './ids.js';
 
 /** A track is one of these two concrete kinds in the SDK. */
 export type TrackKind = 'audio' | 'midi';
@@ -159,7 +150,7 @@ export interface MixerInfo {
   readonly sendCount: number;
 }
 
-/** A track and its current state, addressed by a stable {@link TrackId}. */
+/** A track and its current session-scoped {@link TrackId}. */
 export interface TrackInfo {
   readonly id: TrackId;
   readonly kind: TrackKind;
@@ -192,15 +183,14 @@ export interface TrackMatch {
  * One entry from {@link import("./live-bridge.js").LiveBridge.listClips}: either a
  * clip (audio or MIDI) or an empty Session clip slot.
  *
- * - For a clip, `id` is the clip id (`sessionClipId` or `arrangementClipId`),
+ * - For a clip, `id` is an opaque clip reference,
  *   `kind` is `'midi'` or `'audio'`, and the geometry fields describe the clip.
  *   Session clips additionally carry their parent {@link ClipInfo.slotId}.
  * - For an empty Session slot, `kind` is `'empty'`, `id` and `slotId` are the slot
  *   id, `isMidi` is `false`, `name` is empty, and the geometry fields are zero. The
  *   model reads these to know where it can create a clip.
  */
-export interface ClipInfo {
-  readonly id: ClipId;
+interface ClipInfoBase {
   /** Whether the clip is a MIDI clip (so `getNotes` / `setNotes` apply). */
   readonly isMidi: boolean;
   /** Clip kind, or `'empty'` for an empty Session clip slot. */
@@ -208,6 +198,8 @@ export interface ClipInfo {
   readonly location: ClipLocation;
   /** The parent clip-slot id, present for Session clips and empty slots. */
   readonly slotId?: ClipSlotId;
+  /** Session-scene position, present for Session clips and empty slots only. */
+  readonly sceneIndex?: number;
   readonly name: string;
   /** Start position in beats. */
   readonly startTime: number;
@@ -238,6 +230,40 @@ export interface ClipInfo {
    * recreates the clip on the Arrangement timeline.
    */
   readonly filePath?: string;
+}
+
+/** An Arrangement clip has no Session-slot metadata. */
+export type ArrangementClipInfo = ClipInfoBase & {
+  readonly id: ClipId;
+  readonly kind: 'midi' | 'audio';
+  readonly location: 'arrangement';
+};
+
+/** A populated Session clip must carry the slot and scene needed to recreate it. */
+export type SessionClipInfo = ClipInfoBase & {
+  readonly id: ClipId;
+  readonly kind: 'midi' | 'audio';
+  readonly location: 'session';
+  readonly slotId: ClipSlotId;
+  readonly sceneIndex: number;
+};
+
+/** A concrete clip keeps its clip reference; an empty slot keeps its slot reference. */
+export type PopulatedClipInfo = ArrangementClipInfo | SessionClipInfo;
+
+export type EmptyClipSlotInfo = ClipInfoBase & {
+  readonly id: ClipSlotId;
+  readonly kind: 'empty';
+  readonly location: 'session';
+  readonly slotId: ClipSlotId;
+  readonly sceneIndex: number;
+};
+
+export type ClipInfo = PopulatedClipInfo | EmptyClipSlotInfo;
+
+/** Narrow a listed entry to an actual clip, never an addressable empty slot. */
+export function isPlayableClip(entry: ClipInfo): entry is PopulatedClipInfo {
+  return entry.kind !== 'empty';
 }
 
 /** A Session-view clip slot and whether it currently holds a clip. */
@@ -382,7 +408,7 @@ export interface TrackMixerInfo {
 //
 // The shapes the five pure transforms consume and produce. They are defined here
 // so the stage-2 agents only implement functions and never touch a shared file.
-// All are plain and handle-free; object references are carried as string PathIds.
+// All are plain and handle-free; object references are opaque session references.
 // Each is grounded in a section of 03_EXTENSIONS_SPEC; section refs are inline.
 // ===========================================================================
 
@@ -539,7 +565,26 @@ export interface SessionDTO {
  */
 export interface Section {
   readonly name: string;
-  /** Index into {@link SessionDTO.scenes} of the scene this section is built from. */
+  /**
+   * Opaque reference to the scene selected when the Session-to-Song dialog opened.
+   * The handler resolves it against a fresh scene list immediately before writing so
+   * a reordered scene keeps its identity and a deleted one fails closed.
+   */
+  readonly sceneRef: SceneId;
+  /** Section length in bars. */
+  readonly bars: number;
+  /** Optional color applied to the section's clips and used for its swatch. */
+  readonly color?: number;
+}
+
+/**
+ * A {@link Section} after the Session-to-Song handler has resolved its opaque scene
+ * reference against the current scene list. This is internal planning data: callers
+ * provide only {@link Section}, never a caller-controlled reference/index pair.
+ */
+export interface ResolvedSection {
+  readonly name: string;
+  /** Current index of {@link Section.sceneRef} in the freshly listed scene array. */
   readonly sceneIndex: number;
   /** Section length in bars. */
   readonly bars: number;
@@ -634,14 +679,18 @@ export type IssueId = string;
 
 /**
  * One problem `detectIssues` found (03_EXTENSIONS_SPEC §5(b)). `target` is the
- * handle-free id of the offending track or clip (a {@link TrackId} or {@link ClipId});
+ * handle-free reference of the offending track or clip.
  * `detail` is a short human description for the checklist UI.
  */
 export interface Issue {
   readonly id: IssueId;
   readonly kind: IssueKind;
-  /** Id of the offending object (a track or clip path id). */
-  readonly target: PathId;
+  /** Opaque reference of the offending object. */
+  readonly target: TrackId | ClipId;
+  /** Concrete target type, carried explicitly so callers never parse a reference. */
+  readonly targetKind: 'track' | 'clip';
+  /** Deterministic proposed name when this issue is a placeholder-name issue. */
+  readonly suggestedName?: string;
   /** Short human-readable description of the issue. */
   readonly detail: string;
 }
@@ -658,10 +707,8 @@ export type FixKind = 'rename' | 'recolor' | 'deleteTrack' | 'deleteClip';
  */
 export interface Fix {
   readonly kind: FixKind;
-  /** Id of the object to change (a track or clip path id). */
-  readonly target: PathId;
-  /** New name for `rename`; absent for the other kinds. */
+  readonly target: TrackId | ClipId;
+  readonly targetKind: 'track' | 'clip';
   readonly name?: string;
-  /** New color for `recolor`; absent for the other kinds. */
   readonly color?: number;
 }

@@ -52,8 +52,8 @@ describe('ring 1: safeHandle maps each BridgeError code to its hint', () => {
   // One representative BridgeError per code, built through the core helpers so the
   // default hint per code is the one the model will actually see.
   const cases: readonly { readonly code: BridgeErrorCode; readonly error: BridgeError }[] = [
-    { code: 'STALE_REFERENCE', error: staleReference('track:9') },
-    { code: 'WRONG_TYPE', error: wrongType('track:0/clip:0', 'MIDI clip') },
+    { code: 'STALE_REFERENCE', error: staleReference('lhref_trk_0123456789abcdef') },
+    { code: 'WRONG_TYPE', error: wrongType('lhref_clip_0123456789abcdef', 'MIDI clip') },
     { code: 'BAD_INPUT', error: badInput('Tempo -1 is not a positive number.') },
     { code: 'SDK_REJECTED', error: sdkRejected('Live refused the change.') },
     { code: 'UNSUPPORTED', error: unsupported('Real-time audio is not in the v1.0.0 API.') },

@@ -8,11 +8,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { HumanizeOpts, NoteDTO } from '../dtos.js';
+import { isPlayableClip, type HumanizeOpts, type NoteDTO } from '../dtos.js';
 import { isBridgeErrorOfCode } from '../errors.js';
 import { FakeLiveBridge } from '../fake-live-bridge.js';
 import { runHumanize } from '../handlers/humanize.js';
-import { arrangementClipId, sessionClipId } from '../ids.js';
+import type { ClipId } from '../ids.js';
+import { makeSessionReference } from '../references.js';
 
 /** A deterministic rng: returns `values` in order, cycling. */
 function seqRng(values: readonly number[]): () => number {
@@ -22,6 +23,14 @@ function seqRng(values: readonly number[]): () => number {
     i += 1;
     return v ?? 0;
   };
+}
+
+function clipIdAt(bridge: FakeLiveBridge, trackIndex: number, clipIndex: number): ClipId {
+  const track = bridge.listTracks()[trackIndex];
+  if (track === undefined) throw new Error(`Missing fixture track ${String(trackIndex)}`);
+  const clip = bridge.listClips(track.id).filter(isPlayableClip)[clipIndex];
+  if (clip === undefined) throw new Error(`Missing fixture clip ${String(clipIndex)}`);
+  return clip.id;
 }
 
 /** The three-note clip the headline ring-2 test seeds and humanises. */
@@ -79,7 +88,7 @@ describe('runHumanize: read -> humanize -> write round-trip on the fake', () => 
     const result = await runHumanize(
       bridge,
       {
-        clipIds: [sessionClipId(0, 0), sessionClipId(1, 0)],
+        clipIds: [clipIdAt(bridge, 0, 0), clipIdAt(bridge, 1, 0)],
         opts: { strength: 0.6, doTiming: true, doVelocity: true, doDuration: false },
       },
       seqRng([0.1, 0.9, 0.4, 0.6]),
@@ -143,7 +152,7 @@ describe('runHumanize: errors propagate and roll back', () => {
       runHumanize(
         bridge,
         {
-          clipIds: [arrangementClipId(2, 0)],
+          clipIds: [clipIdAt(bridge, 2, 0)],
           opts: { strength: 0.5, doTiming: true, doVelocity: true, doDuration: false },
         },
         seqRng([0.5]),
@@ -154,20 +163,21 @@ describe('runHumanize: errors propagate and roll back', () => {
 
   it('throws STALE_REFERENCE for a missing clip and leaves the others untouched', async () => {
     const bridge = FakeLiveBridge.seeded();
-    const before = bridge.getNotes(sessionClipId(0, 0));
+    const good = clipIdAt(bridge, 0, 0);
+    const before = bridge.getNotes(good);
     await expect(
       runHumanize(
         bridge,
         {
           // One good clip and one missing clip: the whole transaction rolls back.
-          clipIds: [sessionClipId(0, 0), sessionClipId(0, 9)],
+          clipIds: [good, makeSessionReference('clip', 'unknownclip00001')],
           opts: { strength: 1, doTiming: true, doVelocity: true, doDuration: false },
         },
         seqRng([0.3, 0.7]),
       ),
     ).rejects.toSatisfy((e: unknown) => isBridgeErrorOfCode(e, 'STALE_REFERENCE'));
     // Rolled back: the good clip is unchanged and no undo step was committed.
-    expect(bridge.getNotes(sessionClipId(0, 0))).toEqual(before);
+    expect(bridge.getNotes(good)).toEqual(before);
     expect(bridge.transactionCount).toBe(0);
   });
 });

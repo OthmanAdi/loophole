@@ -11,10 +11,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { beatsPerBar, planArrangement } from '../transforms/arrangement.js';
-import { sessionClipId } from '../ids.js';
-import type { Section, SessionClipDTO, SessionDTO, TimeSig } from '../dtos.js';
+import type { ResolvedSection, SessionClipDTO, SessionDTO, TimeSig } from '../dtos.js';
+import { makeSessionReference } from '../references.js';
 
 const FOUR_FOUR: TimeSig = { num: 4, den: 4 };
+const trackRef = (index: number) =>
+  makeSessionReference('track', `track${String(index).padStart(11, '0')}`);
+const clipRef = (track: number, scene: number) =>
+  makeSessionReference('clip', `clip${String(track)}${String(scene).padStart(11, '0')}`);
 
 /**
  * A two-track Session (Keys = track 0, Drums = track 1) with three scenes
@@ -31,7 +35,7 @@ function buildSession(): SessionDTO {
     color: number,
     isMidi: boolean,
   ): SessionClipDTO => ({
-    clipRef: sessionClipId(track, scene),
+    clipRef: clipRef(track, scene),
     trackIndex: track,
     sceneIndex: scene,
     isMidi,
@@ -45,8 +49,8 @@ function buildSession(): SessionDTO {
 
   return {
     tracks: [
-      { id: sessionClipId(0, 0), name: 'Keys', type: 'midi' },
-      { id: sessionClipId(1, 0), name: 'Drums', type: 'audio' },
+      { id: trackRef(0), name: 'Keys', type: 'midi' },
+      { id: trackRef(1), name: 'Drums', type: 'audio' },
     ],
     scenes: [
       { index: 0, name: 'Intro' },
@@ -76,7 +80,7 @@ describe('beatsPerBar', () => {
 describe('planArrangement: bars-to-beats accumulation', () => {
   it('8 bars of 4/4 spans 32 beats (section start beats accumulate)', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'A', sceneIndex: 0, bars: 8 },
       { name: 'B', sceneIndex: 1, bars: 8 },
     ];
@@ -87,7 +91,7 @@ describe('planArrangement: bars-to-beats accumulation', () => {
 
   it('accumulates across three sections of differing bar lengths', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'Intro', sceneIndex: 0, bars: 4 }, // 16 beats -> next at 16
       { name: 'Verse', sceneIndex: 1, bars: 8 }, // 32 beats -> next at 48
       { name: 'Chorus', sceneIndex: 2, bars: 8 }, // 32 beats
@@ -110,7 +114,7 @@ describe('planArrangement: mixed-meter maths (a 3/4 section)', () => {
         { index: 2, name: 'Chorus' }, // 4/4
       ],
     };
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'Intro', sceneIndex: 0, bars: 4 }, // 4 * 4 = 16 beats -> next at 16
       { name: 'Verse', sceneIndex: 1, bars: 4 }, // 4 * 3 = 12 beats -> next at 28
       { name: 'Chorus', sceneIndex: 2, bars: 4 }, // 4 * 4 = 16 beats
@@ -132,7 +136,7 @@ describe('planArrangement: mixed-meter maths (a 3/4 section)', () => {
 describe('planArrangement: one placement per (section x track-with-a-clip-in-that-scene)', () => {
   it('emits a placement only for tracks that have a clip in the mapped scene', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'Intro', sceneIndex: 0, bars: 4 }, // only Keys has a scene-0 clip
       { name: 'Verse', sceneIndex: 1, bars: 4 }, // Keys + Drums
       { name: 'Chorus', sceneIndex: 2, bars: 4 }, // Keys + Drums
@@ -155,23 +159,25 @@ describe('planArrangement: one placement per (section x track-with-a-clip-in-tha
 
   it('carries the source clip ref, name, and color onto each placement', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [{ name: 'Verse', sceneIndex: 1, bars: 4 }];
+    const sectionMap: readonly ResolvedSection[] = [{ name: 'Verse', sceneIndex: 1, bars: 4 }];
     const { placements } = planArrangement(session, sectionMap, FOUR_FOUR);
 
     const keys = placements.find((p) => p.trackIndex === 0);
-    expect(keys?.sourceClipRef).toBe(sessionClipId(0, 1));
+    expect(keys?.sourceClipRef).toBe(clipRef(0, 1));
     expect(keys?.name).toBe('Verse Keys');
     expect(keys?.color).toBe(8421504); // source clip color (no section override)
     expect(keys?.durationBeats).toBe(16); // 4 bars * 4 beats
 
     const drums = placements.find((p) => p.trackIndex === 1);
-    expect(drums?.sourceClipRef).toBe(sessionClipId(1, 1));
+    expect(drums?.sourceClipRef).toBe(clipRef(1, 1));
     expect(drums?.color).toBe(255);
   });
 
   it('a section color overrides every clip color in that section', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [{ name: 'Verse', sceneIndex: 1, bars: 4, color: 99 }];
+    const sectionMap: readonly ResolvedSection[] = [
+      { name: 'Verse', sceneIndex: 1, bars: 4, color: 99 },
+    ];
     const { placements } = planArrangement(session, sectionMap, FOUR_FOUR);
     expect(placements.length).toBe(2);
     expect(placements.every((p) => p.color === 99)).toBe(true);
@@ -181,7 +187,7 @@ describe('planArrangement: one placement per (section x track-with-a-clip-in-tha
 describe('planArrangement: cue points', () => {
   it('emits one cue point per section, at its start boundary, named after the section', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'Intro', sceneIndex: 0, bars: 8 },
       { name: 'Verse', sceneIndex: 1, bars: 16 },
       { name: 'Chorus', sceneIndex: 2, bars: 16 },
@@ -196,7 +202,7 @@ describe('planArrangement: cue points', () => {
 
   it('emits a cue point for every section, including an empty one', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [
+    const sectionMap: readonly ResolvedSection[] = [
       { name: 'Silence', sceneIndex: 99, bars: 4 }, // scene 99 has no clips
       { name: 'Verse', sceneIndex: 1, bars: 4 },
     ];
@@ -213,7 +219,7 @@ describe('planArrangement: cue points', () => {
 describe('planArrangement: empty scene yields no placements', () => {
   it('a section mapped to a scene with no clips emits no placements but still advances + cues', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [{ name: 'Empty', sceneIndex: 99, bars: 8 }];
+    const sectionMap: readonly ResolvedSection[] = [{ name: 'Empty', sceneIndex: 99, bars: 8 }];
     const { placements, cuePoints } = planArrangement(session, sectionMap, FOUR_FOUR);
     expect(placements).toEqual([]);
     expect(cuePoints).toEqual([{ beat: 0, name: 'Empty' }]);
@@ -228,7 +234,7 @@ describe('planArrangement: empty scene yields no placements', () => {
 
   it('is pure: planning does not mutate the session or the section map', () => {
     const session = buildSession();
-    const sectionMap: readonly Section[] = [{ name: 'Verse', sceneIndex: 1, bars: 4 }];
+    const sectionMap: readonly ResolvedSection[] = [{ name: 'Verse', sceneIndex: 1, bars: 4 }];
     const clipsBefore = session.clips.length;
     planArrangement(session, sectionMap, FOUR_FOUR);
     expect(session.clips.length).toBe(clipsBefore);

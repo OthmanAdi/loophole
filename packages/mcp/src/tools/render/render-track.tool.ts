@@ -13,15 +13,13 @@
 
 import { z } from 'zod';
 
-import { makePathId } from '@othmanadi/loophole-core';
-
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { Beats, TrackId } from '../../schemas/primitives.js';
+import { Beats, TrackReference } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
-    trackId: TrackId,
+    trackId: TrackReference,
     startBeat: Beats,
     endBeat: Beats,
   })
@@ -32,7 +30,7 @@ export const renderTrackTool = defineTool({
   name: 'live_render_track',
   title: 'Render track',
   description:
-    "Render a track's pre-FX audio over a beat range (startBeat..endBeat) to a WAV file in the " +
+    "Render a current track reference's pre-FX audio over a beat range (startBeat..endBeat) to a WAV file in the " +
     "temp directory, and return the path. The render is PRE-FX (before the track's device chain) " +
     'and practical for audio tracks; it is not a post-FX master bounce. This writes a file and ' +
     'does not change the Set, so there is nothing to undo.',
@@ -46,7 +44,7 @@ export const renderTrackTool = defineTool({
     openWorldHint: false,
   },
   handle: async (args, bridge) => {
-    const trackId = makePathId(args.trackId);
+    const trackId = args.trackId;
     const result = await bridge.renderTrack(trackId, args.startBeat, args.endBeat);
     const data = {
       trackId,
@@ -54,6 +52,6 @@ export const renderTrackTool = defineTool({
       path: result.path,
       note: 'pre-FX, audio written to the temp dir',
     };
-    return ok(data, `Rendered ${result.track} (pre-FX) to ${result.path}.`);
+    return ok(data, `Rendered the referenced track (pre-FX) to ${result.path}.`);
   },
 });

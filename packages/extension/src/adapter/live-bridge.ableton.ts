@@ -53,11 +53,9 @@ import {
   type Track,
 } from '@ableton-extensions/sdk';
 import {
-  arrangementClipId,
   badInput,
   type ClipId,
   type ClipInfo,
-  clipSlotId,
   type ClipSlotId,
   type CreateAudioClipArgs,
   type CuePointInfo,
@@ -66,15 +64,12 @@ import {
   type LiveBridge,
   type NoteDTO,
   type ParamId,
-  paramId,
   type RenderResult,
   type SceneInfo,
   sdkRejected,
-  sessionClipId,
   type SetNotesResult,
   type SongOverview,
   type TrackId,
-  trackId,
   type TrackInfo,
   type TrackKind,
   type TrackMatch,
@@ -96,6 +91,7 @@ import {
   trackKind,
   trackMixerInfo,
 } from './mappers.js';
+import { ReferenceService } from './reference-service.js';
 import { Resolver, type V } from './resolver.js';
 import { WriteQueue } from './write-queue.js';
 
@@ -152,6 +148,7 @@ function isAsyncFunction(fn: () => unknown): boolean {
 
 export class AbletonLiveBridge implements LiveBridge {
   readonly #context: ExtensionContext<V>;
+  readonly #references: ReferenceService;
   readonly #resolver: Resolver;
   readonly #queue: WriteQueue;
   /**
@@ -164,9 +161,10 @@ export class AbletonLiveBridge implements LiveBridge {
    */
   #txDepth = 0;
 
-  constructor(context: ExtensionContext<V>, maxPending?: number) {
+  constructor(context: ExtensionContext<V>, references: ReferenceService, maxPending?: number) {
     this.#context = context;
-    this.#resolver = new Resolver(context);
+    this.#references = references;
+    this.#resolver = new Resolver(context, references);
     this.#queue = new WriteQueue(maxPending);
   }
 
@@ -211,7 +209,7 @@ export class AbletonLiveBridge implements LiveBridge {
       sceneCount: song.scenes.length,
       cuePointCount: song.cuePoints.length,
       tracks: tracks.map((track, index) => ({
-        id: trackId(index),
+        id: this.#references.issueTrack(track, index),
         name: track.name,
         type: trackKind(track),
       })),
@@ -225,7 +223,11 @@ export class AbletonLiveBridge implements LiveBridge {
     // getter; volume / panning seeded 0). The exact, addressable volume value is obtained
     // via getTrackMixer, which is async precisely so it can await that real value.
     return this.#resolver.song.tracks.map((track, index) =>
-      trackInfo(track, index, { volume: 0, panning: 0, sendCount: track.mixer.sends.length }),
+      trackInfo(track, this.#references.issueTrack(track, index), {
+        volume: 0,
+        panning: 0,
+        sendCount: track.mixer.sends.length,
+      }),
     );
   }
 
@@ -234,7 +236,11 @@ export class AbletonLiveBridge implements LiveBridge {
     const matches: TrackMatch[] = [];
     this.#resolver.song.tracks.forEach((track, index) => {
       if (track.name.toLowerCase().includes(needle)) {
-        matches.push({ id: trackId(index), name: track.name, type: trackKind(track) });
+        matches.push({
+          id: this.#references.issueTrack(track, index),
+          name: track.name,
+          type: trackKind(track),
+        });
       }
     });
     return matches;
@@ -247,14 +253,20 @@ export class AbletonLiveBridge implements LiveBridge {
       const clip = slot.clip;
       if (clip !== null) {
         out.push(
-          clipInfo(clip, sessionClipId(index, slotIndex), 'session', clipSlotId(index, slotIndex)),
+          clipInfo(
+            clip,
+            this.#references.issueClip(clip, index, slotIndex),
+            'session',
+            this.#references.issueClipSlot(slot, index, slotIndex),
+            slotIndex,
+          ),
         );
       } else {
-        out.push(emptySlotInfo(clipSlotId(index, slotIndex)));
+        out.push(emptySlotInfo(this.#references.issueClipSlot(slot, index, slotIndex), slotIndex));
       }
     });
     track.arrangementClips.forEach((clip, clipIndex) => {
-      out.push(clipInfo(clip, arrangementClipId(index, clipIndex), 'arrangement'));
+      out.push(clipInfo(clip, this.#references.issueClip(clip, index, clipIndex), 'arrangement'));
     });
     return out;
   }
@@ -275,14 +287,16 @@ export class AbletonLiveBridge implements LiveBridge {
     const { track, index } = this.#resolver.resolveTrack(id);
     const params = track.devices.flatMap((device, deviceIndex) =>
       device.parameters.map((param, paramIndex) =>
-        paramInfo(param, paramId(index, deviceIndex, paramIndex)),
+        paramInfo(param, this.#references.issueParameter(param, index, deviceIndex, paramIndex)),
       ),
     );
     return Promise.all(params);
   }
 
   listScenes(): readonly SceneInfo[] {
-    return this.#resolver.song.scenes.map((scene, index) => sceneInfo(scene, index));
+    return this.#resolver.song.scenes.map((scene, index) =>
+      sceneInfo(scene, this.#references.issueScene(scene, index)),
+    );
   }
 
   async getTrackMixer(id: TrackId): Promise<TrackMixerInfo> {
@@ -292,7 +306,10 @@ export class AbletonLiveBridge implements LiveBridge {
     // track:N/mixer/volume, so Gain Stage Doctor reads the true level to fit the dB
     // mapping and commits the trim via setParam (one undo).
     const { track, index } = this.#resolver.resolveTrack(id);
-    return trackMixerInfo(track.mixer, index);
+    return trackMixerInfo(
+      track.mixer,
+      this.#references.issueMixerVolume(track.mixer.volume, index),
+    );
   }
 
   // --- mutations (async; one queued transaction = one undo) ---
@@ -320,9 +337,9 @@ export class AbletonLiveBridge implements LiveBridge {
       if (props.arm !== undefined) track.arm = props.arm;
       return Promise.resolve();
     });
-    const { track, index } = this.#resolver.resolveTrack(id);
+    const { track } = this.#resolver.resolveTrack(id);
     const mixer = await mixerInfo(track.mixer);
-    return trackInfo(track, index, mixer);
+    return trackInfo(track, id, mixer);
   }
 
   async setNotes(id: ClipId, notes: readonly NoteDTO[]): Promise<SetNotesResult> {
@@ -340,53 +357,50 @@ export class AbletonLiveBridge implements LiveBridge {
   }
 
   async createTrack(kind: TrackKind): Promise<TrackInfo> {
-    const song = this.#resolver.song;
     // The two creators return different concrete subclasses; widen to the base Track so
     // #write's result type is monomorphic (the result is unused — we re-resolve below).
-    await this.#write(
-      (): Promise<Track<V>> => (kind === 'midi' ? song.createMidiTrack() : song.createAudioTrack()),
-    );
+    const created = await this.#write<Track<V>>(() => {
+      const operation =
+        kind === 'midi'
+          ? this.#resolver.song.createMidiTrack()
+          : this.#resolver.song.createAudioTrack();
+      return operation as Promise<Track<V>>;
+    });
     // The new track is appended (no track was selected via the API). Re-derive its
     // index from the post-create list; build the DTO outside the transaction (you
     // cannot create-then-read in one sync callback).
-    const index = this.#resolver.song.tracks.length - 1;
-    const { track } = this.#resolver.resolveTrack(trackId(index));
+    const index = this.#resolver.song.tracks.findIndex(
+      (track) => track === created && track.handle.id === created.handle.id,
+    );
+    if (index < 0) throw sdkRejected('Track creation did not yield a track.');
+    const track = created;
     const mixer = await mixerInfo(track.mixer);
-    return trackInfo(track, index, mixer);
+    return trackInfo(track, this.#references.issueTrack(track, index), mixer);
   }
 
   async createMidiClip(id: ClipSlotId, lengthBeats: number): Promise<ClipInfo> {
     if (!(lengthBeats > 0)) {
       throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
     }
-    // Validate the slot + reject a non-MIDI / occupied slot before opening the
-    // transaction. instanceof MidiTrack is the documented narrowing (minify-safe,
-    // unlike constructor.name under the esbuild bundle).
-    const pre = this.#resolver.resolveSlot(id);
-    if (!(pre.track instanceof MidiTrack)) {
-      throw wrongType(id, 'MIDI track clip slot');
-    }
-    if (pre.slot.clip !== null) {
-      throw sdkRejected(
-        `Clip slot "${id}" is already occupied.`,
-        'Pick an empty slot or clear it first.',
-      );
-    }
-    await this.#write(() => {
-      const { slot } = this.#resolver.resolveSlot(id);
+    const created = await this.#write(() => {
+      const { track, slot } = this.#resolver.resolveSlot(id);
+      if (!(track instanceof MidiTrack)) throw wrongType(id, 'MIDI track clip slot');
+      if (slot.clip !== null) {
+        throw sdkRejected(
+          `Clip slot "${id}" is already occupied.`,
+          'Pick an empty slot or clear it first.',
+        );
+      }
       // ClipSlot.createMidiClip(length): single POSITIONAL length in beats.
       return slot.createMidiClip(lengthBeats);
     });
     const { trackIndex, slotIndex, slot } = this.#resolver.resolveSlot(id);
-    const clip = slot.clip;
-    if (clip === null) {
-      throw sdkRejected('Clip creation did not yield a clip.');
-    }
     return clipInfo(
-      clip,
-      sessionClipId(trackIndex, slotIndex),
+      created,
+      this.#references.issueClip(created, trackIndex, slotIndex),
       'session',
-      clipSlotId(trackIndex, slotIndex),
+      this.#references.issueClipSlot(slot, trackIndex, slotIndex),
+      slotIndex,
     );
   }
 
@@ -399,7 +413,7 @@ export class AbletonLiveBridge implements LiveBridge {
       return Promise.resolve();
     });
     const resolved = this.#resolver.resolveClip(id);
-    return clipInfo(resolved.clip, id, resolved.location, resolved.slotId);
+    return clipInfo(resolved.clip, id, resolved.location, resolved.slotId, resolved.sceneIndex);
   }
 
   async deleteTrack(id: TrackId): Promise<void> {
@@ -432,19 +446,13 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!(lengthBeats > 0)) {
       throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
     }
-    const { index } = this.#resolver.resolveTrackOfKind(id, 'midi');
-    await this.#write(() => {
+    const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'midi');
       // MidiTrack.createMidiClip(startTime, duration): POSITIONAL args (01_SDK_MAP §2).
       return track.createMidiClip(startBeat, lengthBeats);
     });
-    const { track } = this.#resolver.resolveTrackOfKind(id, 'midi');
-    const clipIndex = track.arrangementClips.length - 1;
-    const clip = track.arrangementClips[clipIndex];
-    if (clip === undefined) {
-      throw sdkRejected('Arrangement MIDI clip creation did not yield a clip.');
-    }
-    return clipInfo(clip, arrangementClipId(index, clipIndex), 'arrangement');
+    const { index } = this.#resolver.resolveTrackOfKind(id, 'midi');
+    return clipInfo(created, this.#references.issueClip(created, index, -1), 'arrangement');
   }
 
   async createArrangementAudioClip(id: TrackId, args: CreateAudioClipArgs): Promise<ClipInfo> {
@@ -457,8 +465,7 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!(args.duration > 0)) {
       throw badInput(`duration ${String(args.duration)} must be > 0.`);
     }
-    const { index } = this.#resolver.resolveTrackOfKind(id, 'audio');
-    await this.#write(() => {
+    const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
       // AudioTrack.createAudioClip({ filePath, startTime, duration }): SINGLE-OBJECT arg
       // with startTime REQUIRED (01_SDK_MAP §2 / §createClip table).
@@ -468,13 +475,8 @@ export class AbletonLiveBridge implements LiveBridge {
         duration: args.duration,
       });
     });
-    const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
-    const clipIndex = track.arrangementClips.length - 1;
-    const clip = track.arrangementClips[clipIndex];
-    if (clip === undefined) {
-      throw sdkRejected('Arrangement audio clip creation did not yield a clip.');
-    }
-    return clipInfo(clip, arrangementClipId(index, clipIndex), 'arrangement');
+    const { index } = this.#resolver.resolveTrackOfKind(id, 'audio');
+    return clipInfo(created, this.#references.issueClip(created, index, -1), 'arrangement');
   }
 
   async clearClipsInRange(id: TrackId, startBeat: number, endBeat: number): Promise<void> {
@@ -522,9 +524,15 @@ export class AbletonLiveBridge implements LiveBridge {
         return undefined;
       });
       const cuePoints = this.#resolver.song.cuePoints;
-      const cpIndex = cuePoints.findIndex((cp) => cp.handle.id === created.handle.id);
-      const resolvedIndex = cpIndex >= 0 ? cpIndex : cuePoints.length - 1;
-      return cuePointInfo(resolvedIndex, created.time, created.name);
+      const cpIndex = cuePoints.findIndex(
+        (cuePoint) => cuePoint === created && cuePoint.handle.id === created.handle.id,
+      );
+      if (cpIndex < 0) throw sdkRejected('Cue point creation did not yield a cue point.');
+      return cuePointInfo(
+        this.#references.issueCuePoint(created, cpIndex),
+        created.time,
+        created.name,
+      );
     };
     // Nested in a transaction: run inline (the outer txn owns the queue slot + undo).
     if (this.#txDepth > 0) {
@@ -534,14 +542,15 @@ export class AbletonLiveBridge implements LiveBridge {
   }
 
   async setParam(id: ParamId, value: number): Promise<DeviceParamInfo> {
-    const param = this.#resolver.resolveParam(id);
-    if (!Number.isFinite(value) || value < param.min || value > param.max) {
-      throw badInput(
-        `Value ${String(value)} is outside the parameter range ${String(param.min)}..${String(param.max)}.`,
-      );
-    }
     await this.#write(() => {
       const fresh = this.#resolver.resolveParam(id);
+      if (!Number.isFinite(value) || value < fresh.min || value > fresh.max) {
+        throw badInput(
+          `Value ${String(value)} is outside the parameter range ${String(
+            fresh.min,
+          )}..${String(fresh.max)}.`,
+        );
+      }
       // DeviceParameter.setValue(value) is ASYNC; return it for the transaction to
       // batch. It rejects with Error(message) on host refusal -> surfaces upstream.
       return fresh.setValue(value);
@@ -554,21 +563,28 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!Number.isInteger(index) || index < 0) {
       throw badInput(`Device index ${String(index)} must be a non-negative integer.`);
     }
-    const { index: trackIndex } = this.#resolver.resolveTrack(id);
-    await this.#write(() => {
+    const device = await this.#write(() => {
       const { track } = this.#resolver.resolveTrack(id);
       // Track.insertDevice(deviceName, index): built-in Live devices ONLY; rejects on an
       // unknown name (-> SDK_REJECTED upstream). index is a public number.
       return track.insertDevice(deviceName, index);
     });
-    // The device is inserted at min(index, chainLength); re-resolve and locate it.
-    const { track } = this.#resolver.resolveTrack(id);
-    const at = Math.min(index, track.devices.length - 1);
-    const device = track.devices[at];
-    if (device === undefined) {
-      throw sdkRejected('Device insertion did not yield a device.');
-    }
-    return deviceInfo(device, trackIndex, at);
+    const { trackIndex, deviceIndex } = this.#resolver.resolveDevice(
+      this.#references.issueDevice(device, -1, -1),
+    );
+    const parameters = await Promise.all(
+      device.parameters.map((param, parameterIndex) =>
+        paramInfo(
+          param,
+          this.#references.issueParameter(param, trackIndex, deviceIndex, parameterIndex),
+        ),
+      ),
+    );
+    return deviceInfo(
+      device,
+      this.#references.issueDevice(device, trackIndex, deviceIndex),
+      parameters,
+    );
   }
 
   async renderTrack(id: TrackId, startBeat: number, endBeat: number): Promise<RenderResult> {
@@ -581,12 +597,11 @@ export class AbletonLiveBridge implements LiveBridge {
         `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
       );
     }
-    const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
-    const name = track.name;
-    const path = await this.#queue.run(() =>
-      this.#context.resources.renderPreFxAudio(track, startBeat, endBeat),
-    );
-    return { path, track: name };
+    return this.#queue.run(async () => {
+      const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
+      const path = await this.#context.resources.renderPreFxAudio(track, startBeat, endBeat);
+      return { path, track: track.name };
+    });
   }
 
   // --- transaction grouping (one call = one undo, sync callback contract) ---

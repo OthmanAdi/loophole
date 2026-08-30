@@ -4,21 +4,19 @@
  * Add a built-in Live device (a Reverb, an EQ Eight) onto a track at a position
  * in its device chain. One queued transaction = one undo. Built-in devices only;
  * an unknown name is rejected (`SDK_REJECTED`). The result lists the device's
- * parameter ids so the model can address them with live_set_param
+ * parameter references so the model can address them with live_set_param
  * (02_BRIDGE_SPEC §5 tool 11).
  */
 
 import { z } from 'zod';
 
-import { makePathId } from '@othmanadi/loophole-core';
-
 import { defineTool } from '../registry.js';
 import { ok } from '../../result/ok.js';
-import { TrackId } from '../../schemas/primitives.js';
+import { TrackReference } from '../../schemas/primitives.js';
 
 const inputSchema = z
   .object({
-    trackId: TrackId,
+    trackId: TrackReference,
     deviceName: z
       .string()
       .min(1)
@@ -33,9 +31,9 @@ export const insertDeviceTool = defineTool({
   name: 'live_insert_device',
   title: 'Insert device',
   description:
-    'Insert a built-in Live device (e.g. Reverb, EQ Eight) onto a track at a chain index. One ' +
+    'Insert a built-in Live device (e.g. Reverb, EQ Eight) onto a current track reference at a chain index. One ' +
     'undo step. Built-in devices only; third-party / VST is not supported and an unknown name is ' +
-    'rejected. Returns the new device id and its parameter ids, ready for live_set_param.',
+    'rejected. Returns the new device reference and its parameter references, ready for live_set_param.',
   inputSchema,
   annotations: {
     readOnlyHint: false,
@@ -45,7 +43,7 @@ export const insertDeviceTool = defineTool({
     openWorldHint: false,
   },
   handle: async (args, bridge) => {
-    const trackId = makePathId(args.trackId);
+    const trackId = args.trackId;
     const device = await bridge.insertDevice(trackId, args.deviceName, args.index);
     const data = {
       trackId,
@@ -54,7 +52,7 @@ export const insertDeviceTool = defineTool({
     };
     return ok(
       data,
-      `Inserted ${device.name} (${device.id}) with ${String(device.parameters.length)} ` +
+      `Inserted a device with ${String(device.parameters.length)} ` +
         `addressable parameter(s). Set one with live_set_param.`,
     );
   },

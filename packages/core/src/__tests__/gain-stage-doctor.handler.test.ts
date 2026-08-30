@@ -25,7 +25,6 @@ import { describe, expect, it } from 'vitest';
 
 import { FakeLiveBridge } from '../fake-live-bridge.js';
 import { isBridgeErrorOfCode } from '../errors.js';
-import { trackId } from '../ids.js';
 import type { TrackId } from '../ids.js';
 import { analyzeLoudness, dbToParamValue, suggestTrimDb } from '../transforms/loudness.js';
 import { runGainStageDoctor } from '../handlers/gain-stage-doctor.js';
@@ -51,12 +50,18 @@ function fakeDecode(channels: Float32Array[]): { decode: DecodeWav; paths: strin
   return { decode, paths };
 }
 
+function trackIdAt(bridge: FakeLiveBridge, index: number): TrackId {
+  const track = bridge.listTracks()[index];
+  if (track === undefined) throw new Error(`Missing fixture track ${String(index)}`);
+  return track.id;
+}
+
 describe('runGainStageDoctor: read → measure → suggest → map → write (one undo)', () => {
   const TARGET_DB = -18;
 
   it('stores volume == dbToParamValue(suggestTrimDb(rmsDb, target), vol) for the track', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const id = trackId(0); // the Gtr audio track, mixer volume 0.6, unity 0.85
+    const id = trackIdAt(bridge, 0); // the Gtr audio track, mixer volume 0.6, unity 0.85
     const fixture = [dc(0.5)]; // half-scale DC → rms = -6.0206 dBFS (a clean known level)
     const { decode } = fakeDecode(fixture);
 
@@ -88,7 +93,11 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     const { decode } = fakeDecode([dc(0.5)]);
     expect(bridge.transactionCount).toBe(0);
 
-    await runGainStageDoctor(bridge, { trackIds: [trackId(0)], targetDb: TARGET_DB }, decode);
+    await runGainStageDoctor(
+      bridge,
+      { trackIds: [trackIdAt(bridge, 0)], targetDb: TARGET_DB },
+      decode,
+    );
 
     // One render (no undo step) + one setParam batch grouped in one transaction.
     expect(bridge.transactionCount).toBe(1);
@@ -107,7 +116,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
 
     const fixture = [dc(0.5)];
     const { decode } = fakeDecode(fixture);
-    const ids = [trackId(0), trackId(1)];
+    const ids = [trackIdAt(bridge, 0), trackIdAt(bridge, 1)];
 
     await runGainStageDoctor(bridge, { trackIds: ids, targetDb: TARGET_DB }, decode);
 
@@ -128,7 +137,11 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     const bridge = FakeLiveBridge.seededAudioTrack();
     const { decode, paths } = fakeDecode([dc(0.5)]);
 
-    await runGainStageDoctor(bridge, { trackIds: [trackId(0)], targetDb: TARGET_DB }, decode);
+    await runGainStageDoctor(
+      bridge,
+      { trackIds: [trackIdAt(bridge, 0)], targetDb: TARGET_DB },
+      decode,
+    );
 
     // The Gtr arrangement clip spans [0, 8); the fake renders that range to a wav path.
     expect(paths.length).toBe(1);
@@ -137,7 +150,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
 
   it('a louder track gets a negative trim that lowers the fader below unity', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const id = trackId(0);
+    const id = trackIdAt(bridge, 0);
     // Full-scale DC (1.0) → rms ~0 dBFS, far above the -18 target → a large down-trim.
     const { decode } = fakeDecode([dc(1)]);
 
@@ -150,7 +163,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
 
   it('silence yields the guarded floor and a large up-trim (clamped to max)', async () => {
     const bridge = FakeLiveBridge.seededAudioTrack();
-    const id = trackId(0);
+    const id = trackIdAt(bridge, 0);
     const { decode } = fakeDecode([new Float32Array(1024)]); // silence
 
     const result = await runGainStageDoctor(
@@ -178,7 +191,7 @@ describe('runGainStageDoctor: read → measure → suggest → map → write (on
     // The broad seeded Set: track 0 (Drums) is a MIDI track, which renderPreFxAudio
     // refuses. The handler surfaces the port's typed error rather than swallowing it.
     const bridge = FakeLiveBridge.seeded();
-    const midi: TrackId = trackId(0);
+    const midi: TrackId = trackIdAt(bridge, 0);
     const { decode } = fakeDecode([dc(0.5)]);
 
     await expect(

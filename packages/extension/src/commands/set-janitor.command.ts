@@ -23,6 +23,7 @@
 
 import type { ExtensionContext } from '@ableton-extensions/sdk';
 import {
+  type ClipId,
   type ClipInfo,
   detectIssues,
   type Issue,
@@ -121,7 +122,9 @@ function toSetTrack(track: TrackInfo, clips: readonly ClipInfo[]): SetTrackDTO {
 /** Build one {@link SetClipDTO}, omitting `slotId` when absent. */
 function toSetClip(clip: ClipInfo): SetClipDTO {
   const base = {
-    id: clip.id,
+    // Empty slot entries are filtered by the caller; the remaining API contract is a
+    // concrete clip reference. Keep the narrowing at this DTO boundary.
+    id: clip.id as ClipId,
     name: clip.name,
     color: clip.color,
     looping: clip.looping,
