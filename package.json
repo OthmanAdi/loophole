@@ -14,6 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
+    "test:coverage": "pnpm --filter @othmanadi/loophole-core --filter @othmanadi/ableton-mcp run test:coverage",
     "build": "pnpm -r build",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

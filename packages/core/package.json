@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "build": "node -e \"console.log('loophole-core: source-only package, no build step (consumers bundle src)')\""
   }
 }

@@ -22,7 +22,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --coverage",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "build": "tsup"
   },
   "dependencies": {
