@@ -11,21 +11,18 @@
 import { isBridgeError } from '@othmanadi/loophole-core';
 
 /**
- * Parse the result string a modal posts via `close_and_send`. Returns the parsed object
- * on success, or `null` when the string is empty / not an object (e.g. the dialog was
- * dismissed without a structured result). Never throws: a malformed result is treated
- * as a cancel.
+ * Parse the result string a modal posts via `close_and_send`. The value stays
+ * `unknown` until a command-specific runtime validator accepts it. Empty or malformed
+ * JSON is treated as cancel. Valid scalars and arrays are deliberately returned as
+ * unknown so the validator, rather than this shared parser, owns the payload contract.
  */
-export function parseModalResult<T>(result: string): T | null {
+export function parseModalResult(result: string): unknown {
   if (result.length === 0) {
     return null;
   }
   try {
     const parsed: unknown = JSON.parse(result);
-    if (typeof parsed === 'object' && parsed !== null) {
-      return parsed as T;
-    }
-    return null;
+    return parsed;
   } catch {
     return null;
   }

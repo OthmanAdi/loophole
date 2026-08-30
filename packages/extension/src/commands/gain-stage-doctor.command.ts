@@ -19,14 +19,18 @@ import {
 import { ReferenceService } from '../adapter/reference-service.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
-import { parseGainStageModalRequest } from './gain-stage-protocol.js';
+import {
+  GAIN_STAGE_TARGET_OPTIONS,
+  parseGainStageModalRequest,
+  validateGainStageAnalyzeRequest,
+} from './gain-stage-protocol.js';
+import { parseValidatedModal } from './modal-validation.js';
 import { parseModalResult, runCommand } from './support.js';
 
 const COMMAND_ID = 'loophole.gsd.run';
 const LABEL = 'Gain Stage…';
 const DIALOG_WIDTH = 640;
 const DIALOG_HEIGHT = 420;
-const TARGET_OPTIONS = [-18, -20, -12] as const;
 
 interface DecodedAudio {
   readonly numberOfChannels: number;
@@ -56,20 +60,19 @@ async function handle(
     console.error('[loophole] Gain Stage: no audio track in the selection.');
     return;
   }
-  const start = parseGainStageModalRequest(
-    parseModalResult<unknown>(
-      await api.ui.showModalDialog(
-        dialogUrl(TEMPLATES.gainStage, {
-          mode: 'configure',
-          tracks: trackIds.map((id) => ({ id, name: trackName(bridge, id) })),
-          targets: TARGET_OPTIONS,
-        }),
-        DIALOG_WIDTH,
-        DIALOG_HEIGHT,
-      ),
+  const start = parseValidatedModal(
+    await api.ui.showModalDialog(
+      dialogUrl(TEMPLATES.gainStage, {
+        mode: 'configure',
+        tracks: trackIds.map((id) => ({ id, name: trackName(bridge, id) })),
+        targets: GAIN_STAGE_TARGET_OPTIONS,
+      }),
+      DIALOG_WIDTH,
+      DIALOG_HEIGHT,
     ),
+    validateGainStageAnalyzeRequest,
   );
-  if (start === null || start.phase !== 'analyze') return;
+  if (start === null) return;
 
   // Ignore arbitrary UI identifiers: only refs that were in this invocation's selection
   // can enter the read-only plan.
@@ -94,7 +97,7 @@ async function handle(
   if (analysis === null || analysis === undefined) return;
 
   const review = parseGainStageModalRequest(
-    parseModalResult<unknown>(
+    parseModalResult(
       await api.ui.showModalDialog(
         dialogUrl(TEMPLATES.gainStage, {
           mode: 'review',

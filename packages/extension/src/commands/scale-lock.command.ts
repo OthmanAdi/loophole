@@ -27,13 +27,13 @@ import {
   type Scale,
   snapToScale,
   runScaleLock,
-  type SnapMode,
 } from '@othmanadi/loophole-core';
 import { clipIdFromHandle, midiClipIdsFromSlotSelection } from '../adapter/selection.js';
 import { ReferenceService } from '../adapter/reference-service.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
-import { parseModalResult, runCommand } from './support.js';
+import { dispatchValidatedModal, validateScaleLockModal } from './modal-validation.js';
+import { runCommand } from './support.js';
 
 /** The command id Live invokes; also the context-menu action's target. */
 const COMMAND_ID = 'loophole.scalelock.run';
@@ -60,12 +60,6 @@ const PITCH_CLASS_NAMES = [
   'A#',
   'B',
 ] as const;
-
-/** What the Scale Lock modal posts back via `close_and_send`. */
-interface ScaleLockModalResult {
-  /** The chosen snap mode, or `null` when the dialog was cancelled. */
-  readonly mode: SnapMode | null;
-}
 
 /** The data the host templates into the modal: the live scale label + dry counts. */
 interface ScaleLockModalData {
@@ -109,14 +103,13 @@ async function handle(
 
   const data = computeModalData(bridge, clipIds);
   const url = dialogUrl(TEMPLATES.scaleLock, data);
-  const result = parseModalResult<ScaleLockModalResult>(
+  await dispatchValidatedModal(
     await api.ui.showModalDialog(url, DIALOG_WIDTH, DIALOG_HEIGHT),
+    validateScaleLockModal,
+    async (mode) => {
+      await runScaleLock(bridge, { clipIds, mode });
+    },
   );
-  if (result === null || result.mode === null) {
-    return; // cancelled
-  }
-
-  await runScaleLock(bridge, { clipIds, mode: result.mode });
 }
 
 /** Turn the scope's argument into the list of MIDI clip ids to lock. */

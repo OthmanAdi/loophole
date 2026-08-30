@@ -30,7 +30,12 @@ import {
 import type { V } from '../adapter/resolver.js';
 import { sceneReferenceForIndex } from './scene-selection.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
-import { parseModalResult, runCommand } from './support.js';
+import {
+  parseValidatedModal,
+  validateSessionToSongModal,
+  type ValidatedSectionInput,
+} from './modal-validation.js';
+import { runCommand } from './support.js';
 
 const COMMAND_ID = 'loophole.s2s.build';
 const LABEL = 'Build Arrangement from Session…';
@@ -42,19 +47,6 @@ const FALLBACK_TIME_SIG: TimeSig = { num: 4, den: 4 };
 
 /** Above this section count the write is wrapped in a progress dialog. */
 const PROGRESS_THRESHOLD = 4;
-
-/** What the Session-to-Song modal posts back. `sections` is `null` on cancel. */
-interface SessionToSongModalResult {
-  readonly sections: readonly SectionInput[] | null;
-}
-
-/** One section row from the modal (the planner's {@link Section} shape, loosely typed). */
-interface SectionInput {
-  readonly name: string;
-  readonly sceneIndex: number;
-  readonly bars: number;
-  readonly color?: number;
-}
 
 /** A `{ index, name }` scene the modal renders in each row's scene picker. */
 interface SceneRow {
@@ -88,14 +80,13 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<voi
   }));
 
   const url = dialogUrl(TEMPLATES.sessionToSong, { scenes });
-  const result = parseModalResult<SessionToSongModalResult>(
+  const sections = parseValidatedModal(
     await api.ui.showModalDialog(url, DIALOG_WIDTH, DIALOG_HEIGHT),
+    validateSessionToSongModal,
   );
-  if (result === null || result.sections === null) {
-    return; // cancelled
-  }
+  if (sections === null) return;
 
-  const sectionMap: Section[] = result.sections
+  const sectionMap: Section[] = sections
     .filter((s) => s.name.trim().length > 0 && s.bars > 0)
     .map((section) => toSection(section, listedScenes));
   if (sectionMap.length === 0) {
@@ -115,7 +106,7 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<voi
 }
 
 /** Build a {@link Section}, binding the modal's numeric choice to the opening scene snapshot. */
-function toSection(input: SectionInput, openingScenes: readonly SceneInfo[]): Section {
+function toSection(input: ValidatedSectionInput, openingScenes: readonly SceneInfo[]): Section {
   const base = {
     name: input.name.trim(),
     sceneRef: sceneReferenceForIndex(openingScenes, input.sceneIndex),

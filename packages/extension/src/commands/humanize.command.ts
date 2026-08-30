@@ -19,39 +19,18 @@
  */
 
 import type { ClipSlotSelection, ExtensionContext, Handle } from '@ableton-extensions/sdk';
-import {
-  type ClipId,
-  type HumanizeOpts,
-  type LiveBridge,
-  runHumanize,
-} from '@othmanadi/loophole-core';
+import { type ClipId, type LiveBridge, runHumanize } from '@othmanadi/loophole-core';
 import { clipIdFromHandle, midiClipIdsFromSlotSelection } from '../adapter/selection.js';
 import { ReferenceService } from '../adapter/reference-service.js';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
-import { parseModalResult, runCommand } from './support.js';
+import { dispatchValidatedModal, validateHumanizeModal } from './modal-validation.js';
+import { runCommand } from './support.js';
 
 const COMMAND_ID = 'loophole.humanize.run';
 const LABEL = 'Humanize…';
 const DIALOG_WIDTH = 340;
 const DIALOG_HEIGHT = 300;
-
-/**
- * What the Humanize modal posts back. `strength` is `null` on cancel; otherwise every
- * field is present (the modal always sends `swing` and `living` as concrete values, not
- * `undefined`), so they are typed REQUIRED here. That matters under
- * `exactOptionalPropertyTypes`: building {@link HumanizeOpts} from a `number | undefined`
- * would be rejected, but the modal guarantees concrete values.
- */
-interface HumanizeModalApply {
-  readonly strength: number;
-  readonly swing: number;
-  readonly doTiming: boolean;
-  readonly doVelocity: boolean;
-  readonly doDuration: boolean;
-  readonly living: boolean;
-}
-type HumanizeModalResult = HumanizeModalApply | { readonly strength: null };
 
 /**
  * Register the Humanize command + its two context-menu actions.
@@ -88,22 +67,13 @@ async function handle(
   }
 
   const url = dialogUrl(TEMPLATES.humanize, {});
-  const result = parseModalResult<HumanizeModalResult>(
+  await dispatchValidatedModal(
     await api.ui.showModalDialog(url, DIALOG_WIDTH, DIALOG_HEIGHT),
+    validateHumanizeModal,
+    async (opts) => {
+      await runHumanize(bridge, { clipIds, opts }, rng);
+    },
   );
-  if (result === null || result.strength === null) {
-    return; // cancelled
-  }
-
-  const opts: HumanizeOpts = {
-    strength: result.strength,
-    swing: result.swing,
-    doTiming: result.doTiming,
-    doVelocity: result.doVelocity,
-    doDuration: result.doDuration,
-    living: result.living,
-  };
-  await runHumanize(bridge, { clipIds, opts }, rng);
 }
 
 /** Turn the scope's argument into the list of MIDI clip ids to humanize. */

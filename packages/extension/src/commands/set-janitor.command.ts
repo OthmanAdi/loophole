@@ -33,17 +33,13 @@ import {
 } from '@othmanadi/loophole-core';
 import type { V } from '../adapter/resolver.js';
 import { TEMPLATES, dialogUrl } from '../webviews/index.js';
-import { parseModalResult, runCommand } from './support.js';
+import { dispatchSetJanitorModal } from './modal-validation.js';
+import { runCommand } from './support.js';
 
 const COMMAND_ID = 'loophole.janitor.run';
 const LABEL = 'Clean Up Set…';
 const DIALOG_WIDTH = 560;
 const DIALOG_HEIGHT = 460;
-
-/** What the Set Janitor modal posts back. `chosenIssueIds` is `null` on cancel. */
-interface SetJanitorModalResult {
-  readonly chosenIssueIds: readonly string[] | null;
-}
 
 /** One issue row the modal renders (id + kind for grouping + a human detail line). */
 interface IssueRow {
@@ -76,17 +72,13 @@ async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<voi
   const rows: IssueRow[] = issues.map(toIssueRow);
 
   const url = dialogUrl(TEMPLATES.setJanitor, { issues: rows });
-  const result = parseModalResult<SetJanitorModalResult>(
+  await dispatchSetJanitorModal(
     await api.ui.showModalDialog(url, DIALOG_WIDTH, DIALOG_HEIGHT),
+    rows.map((row) => row.id),
+    async (chosenIssueIds) => {
+      await runSetJanitor(bridge, { chosenIssueIds });
+    },
   );
-  if (result === null || result.chosenIssueIds === null) {
-    return; // cancelled
-  }
-  if (result.chosenIssueIds.length === 0) {
-    return; // nothing ticked
-  }
-
-  await runSetJanitor(bridge, { chosenIssueIds: result.chosenIssueIds });
 }
 
 /** Project an {@link Issue} to the minimal row the modal needs. */
