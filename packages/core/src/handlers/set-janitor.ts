@@ -1,7 +1,7 @@
 /**
  * Set Janitor (W6) command handler: read the whole Set through the {@link LiveBridge}
  * port, detect hygiene issues, plan fixes for the issues the user chose, and apply
- * them in exactly ONE transaction (one undo across the whole sweep).
+ * them in a deterministic sequence that keeps position-based targets honest.
  *
  * This is the ring-2 layer of 03_EXTENSIONS_SPEC §5: it imports only the port (DTOs +
  * string ids), never the SDK, so it runs against {@link FakeLiveBridge} with no
@@ -11,13 +11,15 @@
  * The transaction shape is the mixed sync-setter + async-delete pattern §5(b)
  * prescribes: renames and recolors go through the bridge's `setTrackProps` /
  * `setClipProps` (each a sync setter under the hood), and deletes go through
- * `deleteTrack` / `deleteClip` (async). All of them are issued inside one synchronous
- * `transaction` callback whose return is a single `Promise.all`, so the whole sweep
- * collapses to one user-facing undo step. Deletes fire only for chosen delete-fixes.
+ * `deleteTrack` / `deleteClip` (async). Value edits are grouped in one transaction.
+ * Structural deletes then run serially: clips from highest to lowest index within a
+ * track, followed by tracks from highest to lowest index. This prevents an earlier
+ * splice from silently retargeting a later position-based id. Deletes fire only for
+ * chosen delete-fixes.
  */
 
 import type { ClipInfo, Fix, SetClipDTO, SetDTO, SetTrackDTO, TrackInfo } from '../dtos.js';
-import { leafKind } from '../ids.js';
+import { leafKind, parsePath, type PathSegment } from '../ids.js';
 import type { LiveBridge } from '../live-bridge.js';
 import { detectIssues, planFixes } from '../transforms/janitor.js';
 
@@ -29,7 +31,7 @@ export interface SetJanitorArgs {
 
 /** Result of {@link runSetJanitor}: how many fixes were applied in the sweep. */
 export interface SetJanitorResult {
-  /** Number of {@link Fix}es applied (one bridge mutation each, all in one undo). */
+  /** Number of {@link Fix}es applied after the complete sequence succeeds. */
   readonly applied: number;
 }
 
@@ -85,13 +87,12 @@ function readSet(bridge: LiveBridge): SetDTO {
 
 /**
  * Issue the one bridge mutation that applies a single {@link Fix}, returning its
- * Promise so the caller can batch them with `Promise.all` inside the transaction.
+ * Promise so the caller can await it in the appropriate mutation phase.
  * A `rename` can target a track or a clip, so it dispatches on the target's leaf kind
  * (`setTrackProps` vs `setClipProps`); a `recolor` only ever comes from a clip's
  * off-palette issue, so it routes straight to `setClipProps`; deletes route to
  * `deleteTrack` / `deleteClip`. Every id alias (`TrackId` / `ClipId`) is a `PathId`,
- * so the port methods take `fix.target` directly. The returned Promises are NOT
- * awaited here — that is the transaction's job — so the whole batch is one undo.
+ * so the port methods take `fix.target` directly.
  */
 function applyFix(bridge: LiveBridge, fix: Fix): Promise<unknown> {
   switch (fix.kind) {
@@ -110,16 +111,55 @@ function applyFix(bridge: LiveBridge, fix: Fix): Promise<unknown> {
   }
 }
 
+/** Return the numeric index carried by a parsed path segment, or fail loudly. */
+function segmentIndex(segment: PathSegment | undefined, target: Fix['target']): number {
+  if (segment === undefined || !('index' in segment)) {
+    throw new TypeError(`Structural fix target "${target}" has no sortable index.`);
+  }
+  return segment.index;
+}
+
+/**
+ * Sort clip deletes without mutating the planner's output. Tracks are visited in
+ * stable ascending order; inside each track, higher slot/Arrangement indices are
+ * deleted first so an Arrangement-array splice cannot shift a later target.
+ */
+function orderClipDeletes(fixes: readonly Fix[]): Fix[] {
+  return [...fixes].sort((left, right) => {
+    const leftPath = parsePath(left.target);
+    const rightPath = parsePath(right.target);
+    const trackOrder =
+      segmentIndex(leftPath[0], left.target) - segmentIndex(rightPath[0], right.target);
+    if (trackOrder !== 0) {
+      return trackOrder;
+    }
+
+    return segmentIndex(rightPath[1], right.target) - segmentIndex(leftPath[1], left.target);
+  });
+}
+
+/** Sort track deletes from highest to lowest position so earlier splices stay safe. */
+function orderTrackDeletes(fixes: readonly Fix[]): Fix[] {
+  return [...fixes].sort(
+    (left, right) =>
+      segmentIndex(parsePath(right.target)[0], right.target) -
+      segmentIndex(parsePath(left.target)[0], left.target),
+  );
+}
+
 /**
  * Run the Set Janitor sweep: read the Set, detect issues, plan fixes for the chosen
- * issue ids, and apply every fix in ONE transaction (one undo). Resolves to the
- * number of fixes applied.
+ * issue ids, and apply every fix in a deterministic sequence. Resolves to the number
+ * of fixes applied after every phase succeeds.
  *
- * The whole write is a single {@link LiveBridge.transaction} whose synchronous
- * callback returns `Promise.all` of every fix's mutation, so renames, recolors, and
- * deletes collapse into one user-facing undo step (03_EXTENSIONS_SPEC §5(b)). When no
- * chosen issue yields a fix, the sweep applies nothing and resolves `{ applied: 0 }`
- * WITHOUT opening a transaction (nothing to undo).
+ * Non-structural renames/recolors share one {@link LiveBridge.transaction}. Clip
+ * deletes then run serially, descending within each track, and track deletes run
+ * serially in descending track order. Structural operations therefore each create
+ * their own undo step. This intentionally trades a single sweep-wide undo for safe,
+ * deterministic position-based deletion. If a delete rejects as stale, the error is
+ * propagated and later deletes are not attempted; earlier completed phases remain
+ * applied and undoable. When no chosen issue yields a fix, the sweep resolves
+ * `{ applied: 0 }` without opening a transaction.
  *
  * @param bridge the {@link LiveBridge} port (real adapter in Live, fake in tests).
  * @param args the chosen issue ids ({@link SetJanitorArgs}).
@@ -137,7 +177,21 @@ export async function runSetJanitor(
     return { applied: 0 };
   }
 
-  await bridge.transaction(() => Promise.all(fixes.map((fix) => applyFix(bridge, fix))));
+  const valueFixes = fixes.filter((fix) => fix.kind === 'rename' || fix.kind === 'recolor');
+  const clipDeletes = orderClipDeletes(fixes.filter((fix) => fix.kind === 'deleteClip'));
+  const trackDeletes = orderTrackDeletes(fixes.filter((fix) => fix.kind === 'deleteTrack'));
+
+  if (valueFixes.length > 0) {
+    await bridge.transaction(() => Promise.all(valueFixes.map((fix) => applyFix(bridge, fix))));
+  }
+
+  for (const fix of clipDeletes) {
+    await applyFix(bridge, fix);
+  }
+
+  for (const fix of trackDeletes) {
+    await applyFix(bridge, fix);
+  }
 
   return { applied: fixes.length };
 }

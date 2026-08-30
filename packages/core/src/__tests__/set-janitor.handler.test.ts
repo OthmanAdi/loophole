@@ -2,10 +2,10 @@
  * Ring 2 tests for the Set Janitor command handler against {@link FakeLiveBridge}
  * (03_EXTENSIONS_SPEC §5(f)). Seed a messy Set, run the handler with a chosen subset,
  * and pin the headline claims: chosen renames/recolors land, UNCHOSEN deletes do NOT
- * fire, chosen deletes DO, and the whole sweep is exactly ONE transaction (one undo).
+ * fire, chosen deletes DO, and value-only sweeps remain exactly one transaction.
  *
- * The mixed sync-setter (rename/recolor) + async-delete transaction shape is exactly
- * what this ring exists to verify, with no Ableton install.
+ * Structural deletes intentionally use separate undo steps so position-based ids can
+ * be applied serially and deterministically, with no Ableton install.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -81,7 +81,7 @@ describe('runSetJanitor: detects the seeded mess through the bridge', () => {
   });
 });
 
-describe('runSetJanitor: applies a chosen subset in one undo', () => {
+describe('runSetJanitor: applies a chosen subset with explicit undo phases', () => {
   it('renames the chosen track + clip and recolors the chosen clip; one transaction', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
     expect(bridge.transactionCount).toBe(0);
@@ -126,7 +126,7 @@ describe('runSetJanitor: applies a chosen subset in one undo', () => {
     expect(names).toEqual(['Bass', '1-MIDI']);
   });
 
-  it('a mixed rename + recolor + delete sweep is still exactly ONE transaction', async () => {
+  it('groups value edits, then applies the structural delete as its own undo step', async () => {
     const bridge = FakeLiveBridge.seededMessySet();
     expect(bridge.transactionCount).toBe(0);
 
@@ -135,7 +135,7 @@ describe('runSetJanitor: applies a chosen subset in one undo', () => {
     });
 
     expect(result.applied).toBe(3);
-    expect(bridge.transactionCount).toBe(1);
+    expect(bridge.transactionCount).toBe(2);
     // Delete landed (Empty gone), rename landed (track 1 -> "Track 2"), recolor landed.
     expect(bridge.listTracks().map((t) => t.name)).toEqual(['Bass', 'Track 2']);
     expect(bridge.listClips(trackId(0))[0]?.color).not.toBe(12345);
