@@ -2,9 +2,8 @@
  * Tool 9 — `live_create_midi_clip` (write).
  *
  * Create an empty MIDI clip in a Session clip slot, ready for live_set_notes. One
- * queued transaction = one undo. Targets Session slots only (arrangement-clip
- * creation is out of scope this wave); the slot must be on a MIDI track and empty
- * (02_BRIDGE_SPEC §5 tool 9).
+ * queued transaction = one undo. Targets Session slots only; the slot must be
+ * on a MIDI track and empty. Arrangement-clip creation is not supported.
  */
 
 import { z } from 'zod';

@@ -1,7 +1,7 @@
 /**
- * Ring 1 unit tests for the pure groove transform (Humanize / Groove Sculptor, W2).
+ * Unit tests for the pure groove transform used by Humanize / Groove Sculptor.
  * No bridge, no I/O. Determinism comes from an injected fixed-seed rng, so every
- * assertion is an exact-output check (03_EXTENSIONS_SPEC §2(f)).
+ * assertion is an exact-output check.
  *
  * The rng here is a simple cyclic sequence: each call returns the next value in the
  * list, wrapping around. Because `humanize` draws in a fixed, documented order

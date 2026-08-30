@@ -1,5 +1,5 @@
 /**
- * Ring 2 (integration) — the error model over the MCP wire (02_BRIDGE_SPEC §7, §8).
+ * Integration coverage for the error model over the MCP wire.
  *
  * The rule the model needs: a tool NEVER throws to the protocol. Every failure is
  * a normal tool result with `isError: true` and a recovery hint, so `callTool`
@@ -26,7 +26,7 @@ import { FakeLiveBridge } from '@othmanadi/loophole-core';
 
 import { callTool, connect, resultCode, resultText, type Connected } from './harness.js';
 
-describe('ring 2: error paths over MCP (clean results, never a throw)', () => {
+describe('error paths over MCP (clean results, never a throw)', () => {
   let live: FakeLiveBridge;
   let conn: Connected;
   let drumsTrack: TrackReference;
@@ -76,7 +76,7 @@ describe('ring 2: error paths over MCP (clean results, never a throw)', () => {
     expect(live.transactionCount).toBe(0);
   });
 
-  it('a wrong-type id (audio clip into set_notes) resolves to WRONG_TYPE', async () => {
+  it('a wrong-type reference (audio clip into set_notes) resolves to WRONG_TYPE', async () => {
     // The seeded Vocals arrangement clip is audio, not MIDI.
     const res = await callTool(conn.client, 'live_set_notes', {
       clipId: vocalsAudioClip,

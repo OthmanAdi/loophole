@@ -1,6 +1,6 @@
 /**
- * Ring 2 tests for the Scale Lock (W1) command handler against the
- * {@link FakeLiveBridge}, with no Ableton install. 03_EXTENSIONS_SPEC §1(f).
+ * Command-handler tests for Scale Lock against the {@link FakeLiveBridge}, with no
+ * Ableton install.
  *
  * Asserts the read-map-write round-trip (the fake's stored notes equal the expected
  * snapped array), that the whole run is exactly ONE transaction (one undo) across all

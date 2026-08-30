@@ -10,7 +10,7 @@
  * can hold heterogeneously.
  *
  * `registerTool` is where the wiring happens: it wraps the handler in
- * `safeHandle` (so it can never throw to the protocol, 02_BRIDGE_SPEC §7) and
+ * `safeHandle` (so it can never throw to the protocol) and
  * hands the SDK the tool's Zod input schema plus its annotations. The
  * SDK-callback adaptation needs exactly one localized cast (`as ToolCallback`),
  * because the per-tool input generic cannot survive the erased array; the cast
@@ -28,8 +28,7 @@ import type { ToolResult } from '../result/ok.js';
 
 /**
  * The MCP tool annotation hints the bridge sets, named locally so tool files do
- * not import the MCP SDK. Maps one-to-one onto the SDK's `ToolAnnotations`
- * (02_BRIDGE_SPEC §5):
+ * not import the MCP SDK. Maps one-to-one onto the SDK's `ToolAnnotations`:
  *  - `readOnlyHint`: true for the four reads, false for the eight writes.
  *  - `idempotentHint`: true for the setters (re-running with the same args lands
  *    the same state).

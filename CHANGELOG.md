@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- W0 repo skeleton: pnpm monorepo, strict TypeScript base, ESLint plus Prettier, Vitest.
+- Initial repository skeleton: pnpm monorepo, strict TypeScript base, ESLint plus Prettier, Vitest.
 - The `LiveBridge` port and its in-memory `FakeLiveBridge`, exported from `@othmanadi/ableton-mcp` so the server is testable without Ableton Live.
 - Serializable DTOs, stable path-id scheme, typed error model, and pure note transforms (`clampPitch`, `transposeNotes`, `humanizeTiming`).
 - Contract tests pinning the SDK semantics the fake reproduces (pitch clamp, stale-id throw, one transaction equals one undo).

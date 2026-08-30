@@ -1,5 +1,5 @@
 /**
- * Humanize / Groove Sculptor (W2) context-menu command, 03_EXTENSIONS_SPEC §2(c).
+ * Humanize / Groove Sculptor context-menu command.
  *
  * Registers `"Humanize…"` on `"MidiClip"` and `"ClipSlotSelection"`, shows the Humanize
  * modal (strength / swing sliders, timing / velocity / duration checkboxes, living
@@ -8,14 +8,15 @@
  *
  * `rng` is injected, exactly as the transform requires for determinism: `activate()`
  * builds a real PRNG (seeded from `Math.random()` at boot) and passes it through here,
- * while ring-2 tests pass a fixed-seed PRNG to the handler directly. Threading a real
+ * while SDK-free tests pass a fixed-seed PRNG to the handler directly. Threading a real
  * PRNG (rather than `Math.random` inline) keeps the SDK-facing shell consistent with
  * the tested contract.
  *
  * SDK-facing; CI-excluded; typechecked locally via `tsconfig.live.json`.
  *
- * RING-3 PENDING: scope arg shape, modal round-trip, one-undo grouping — confirmed only
- * in real Live. The resolve + handler path is the ring-2 code.
+ * Ableton runtime verification is NOT_RUN here: the scope argument shape, modal
+ * round-trip, and undo grouping remain checks in the manual E2E checklist. The resolve
+ * and handler path is covered by SDK-free tests.
  */
 
 import type { ClipSlotSelection, ExtensionContext, Handle } from '@ableton-extensions/sdk';

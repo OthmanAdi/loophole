@@ -1,27 +1,27 @@
 /**
  * Pure translation from live SDK objects to the serializable core DTOs the {@link
- * import("@othmanadi/loophole-core").LiveBridge} port speaks (02_BRIDGE_SPEC §9).
+ * import("@othmanadi/loophole-core").LiveBridge} port speaks.
  *
  * Every mapper reads SDK getters and emits a plain DTO carrying names and opaque,
  * session-scoped references only: no `Handle`, no `bigint`, and no SDK type crosses
  * out of the adapter. The adapter
  * obtains each reference from the shared {@link import("./reference-service.js").ReferenceService}.
  *
- * Sync vs async (01_SDK_MAP §0 Rule A): nearly every getter is synchronous, so most
- * mappers are sync. The sole exception is a {@link DeviceParameter}'s current value —
+ * Nearly every SDK getter used here is synchronous, so most mappers are sync. The sole
+ * exception is a {@link DeviceParameter}'s current value:
  * `DeviceParameter.getValue()` is `[async]` — so {@link paramInfo} and everything that
  * embeds a param value ({@link deviceInfo}, {@link trackMixerInfo}, {@link mixerInfo})
  * are async and `await` that one call. `min` / `max` / `defaultValue` / `isQuantized`
- * are sync getters, read directly. Those values are the parameter's INTERNAL units
- * (raw, not display), matching `DeviceParamInfo` (01_SDK_MAP §2 DeviceParameter note).
+ * are sync getters, read directly. Those values are the parameter's internal units
+ * (raw, not display), matching `DeviceParamInfo`.
  *
  * This file imports `@ableton-extensions/sdk` (as types plus the `instanceof` classes),
  * so it lives in the adapter layer: excluded from the committed CI tsconfig, typechecked
  * locally against the real `.d.mts` via `tsconfig.live.json`.
  *
- * RING-3 PENDING: numeric color values, the audio `filePath` shape, and the exact
- * `mutedViaSolo` interaction are typed against v1.0.0-beta.0 but unverified in a real
- * Set (no Ableton here); confirmed by the manual E2E checklist.
+ * Ableton runtime verification is NOT_RUN here: numeric color values, the audio
+ * `filePath` shape, and the exact `mutedViaSolo` interaction are typed against
+ * v1.0.0-beta.0 but remain checks in the manual E2E checklist.
  */
 
 import {
@@ -63,8 +63,8 @@ import type { V } from './resolver.js';
 /**
  * Map an SDK {@link NoteDescription} to a {@link NoteDTO}, dropping any optional field
  * the host did not report (a MISSING key, never `key: undefined`, per
- * `exactOptionalPropertyTypes`). The fields are a one-to-one match (01_SDK_MAP §3); no
- * clamping happens here (reads pass values through; writes clamp on the way in).
+ * `exactOptionalPropertyTypes`). The fields map one-to-one; no clamping happens here
+ * (reads pass values through; writes clamp on the way in).
  */
 export function noteToDTO(note: NoteDescription): NoteDTO {
   const out: {
@@ -120,8 +120,7 @@ export function noteToDescription(dto: NoteDTO): NoteDescription {
 /**
  * Concrete kind of a track. The SDK types `Song.tracks` as base `Track`, but the
  * runtime registry instantiates `MidiTrack` / `AudioTrack`, so `instanceof MidiTrack`
- * is the documented narrowing (01_SDK_MAP §0 Rule B). Anything not a MIDI track is an
- * audio track in this model.
+ * is the supported narrowing. Anything not a MIDI track is an audio track in this model.
  */
 export function trackKind(track: Track<V>): TrackKind {
   return track instanceof MidiTrack ? 'midi' : 'audio';
@@ -153,7 +152,7 @@ export function trackInfo(track: Track<V>, id: TrackId, mixer: MixerInfo): Track
 /**
  * Map a live {@link Clip} to a {@link ClipInfo}. `kind` / `isMidi` come from the
  * concrete subclass (`instanceof MidiClip` / `AudioClip`); the geometry fields are
- * sync getters (01_SDK_MAP §2 Clip). `filePath` is set ONLY for an audio clip (a
+ * sync getters. `filePath` is set only for an audio clip (a
  * missing key for MIDI, per `exactOptionalPropertyTypes`); `slotId` only for a Session
  * clip. `endMarker` is read directly so Set Janitor's loop-overrun rule can compare it
  * against `loopEnd` through the port.
@@ -221,7 +220,7 @@ export function emptySlotInfo(slotId: ClipSlotId, sceneIndex: number): ClipInfo 
 
 /**
  * Map a live {@link DeviceParameter} to a {@link DeviceParamInfo}. ASYNC because the
- * current value comes from `getValue()` (`[async]`, 01_SDK_MAP §2). The range fields
+ * current value comes from the async `getValue()`. The range fields
  * are the parameter's INTERNAL units via sync getters.
  */
 export async function paramInfo(param: DeviceParameter<V>, id: ParamId): Promise<DeviceParamInfo> {
@@ -252,8 +251,9 @@ export async function deviceInfo(
 
 /**
  * Map a track's {@link TrackMixer} to a {@link TrackMixerInfo}: its volume as an
- * addressable {@link DeviceParamInfo} whose id is `track:N/mixer/volume`, so Gain Stage
- * Doctor can write the trim through `setParam`. ASYNC for the volume's `getValue()`.
+ * addressable {@link DeviceParamInfo} with an opaque, session-scoped parameter reference,
+ * so Gain Stage Doctor can write the trim through `setParam`. ASYNC for the volume's
+ * `getValue()`.
  */
 export async function trackMixerInfo(
   mixer: TrackMixer<V>,

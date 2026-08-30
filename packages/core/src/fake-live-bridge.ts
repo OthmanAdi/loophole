@@ -426,9 +426,8 @@ export class FakeLiveBridge implements LiveBridge {
    *    `"Audio 3"` (placeholder-name issues),
    *  - track 2 `Empty` (audio): no clips, no devices (empty-track issue).
    *
-   * The palette the off-palette rule checks is the stage-2 transform's business; the
-   * fixture just plants a clearly non-standard color (`12345`) and standard ones so a
-   * rule can tell them apart.
+   * Palette policy belongs to the pure transform; the fixture just plants a clearly
+   * non-standard color (`12345`) and standard ones so a rule can tell them apart.
    */
   static seededMessySet(): FakeLiveBridge {
     return new FakeLiveBridge(FakeLiveBridge.#seedMessyModel());
@@ -493,10 +492,9 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /**
-   * The id of the first Session clip in the {@link FakeLiveBridge.withOneMidiClip}
-   * fixture. An instance accessor so the integration suite can
-   * write `live.firstClipId` (as the 02_BRIDGE_SPEC §8 sketch does), without
-   * rebuilding the id.
+   * The opaque reference of the first Session clip in the
+   * {@link FakeLiveBridge.withOneMidiClip} fixture. An instance accessor lets tests
+   * address the seeded clip without rebuilding its reference.
    */
   get firstClipId(): ClipId {
     const slot = this.#song.tracks[0]?.clipSlots[0];
@@ -505,7 +503,8 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /**
-   * The id of the first Session clip slot in the {@link FakeLiveBridge.withOneMidiClip}
+   * The opaque reference of the first Session clip slot in the
+   * {@link FakeLiveBridge.withOneMidiClip}
    * fixture. The second slot is empty.
    * An instance accessor, paired with {@link FakeLiveBridge.firstClipId}.
    */
@@ -1069,7 +1068,7 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   // listDeviceParams / getTrackMixer are ASYNC: in the real SDK a parameter's value is
-  // read with DeviceParameter.getValue() (the one async getter, 01_SDK_MAP §2). The fake
+  // read with DeviceParameter.getValue() (the only async getter used by the port). The fake
   // holds the value in memory and could return it synchronously, but it returns a
   // resolved Promise to MATCH the port + the real adapter: an `async` method also turns a
   // #resolveTrack throw into a rejection, exactly as the adapter does. These are pure

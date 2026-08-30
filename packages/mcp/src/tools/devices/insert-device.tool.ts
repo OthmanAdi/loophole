@@ -4,8 +4,7 @@
  * Add a built-in Live device (a Reverb, an EQ Eight) onto a track at a position
  * in its device chain. One queued transaction = one undo. Built-in devices only;
  * an unknown name is rejected (`SDK_REJECTED`). The result lists the device's
- * parameter references so the model can address them with live_set_param
- * (02_BRIDGE_SPEC §5 tool 11).
+ * parameter references so the model can address them with live_set_param.
  */
 
 import { z } from 'zod';

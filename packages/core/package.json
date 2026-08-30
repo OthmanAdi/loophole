@@ -1,7 +1,7 @@
 {
   "name": "@othmanadi/loophole-core",
   "version": "0.0.0",
-  "description": "Loophole core: the SDK-free, CI-tested heart shared by the Loophole Bridge and the Loophole Kit extensions. The LiveBridge port, FakeLiveBridge model, DTOs, path ids, error model, and pure note transforms.",
+  "description": "Loophole core: the SDK-free, CI-tested heart shared by the Loophole Bridge and the Loophole Kit extensions. The LiveBridge port, FakeLiveBridge model, DTOs, opaque session references, error model, and pure note transforms.",
   "license": "MIT",
   "author": "Ahmad Othman Ammar Adi (CodingWithAdi)",
   "type": "module",

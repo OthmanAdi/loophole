@@ -1,12 +1,12 @@
 /**
- * Ring 2 (integration) — the tool catalogue over the MCP wire (02_BRIDGE_SPEC §8).
+ * Integration coverage for the tool catalogue over the MCP wire.
  *
  * A real `Client` lists the tools of a real `buildServer(FakeLiveBridge)` over an
  * in-memory transport, and we assert the published catalogue: exactly 12 tools,
  * the right names, a valid JSON-Schema `inputSchema` per tool, and the annotation
  * hints (readOnly for the four reads, not for the eight writes; never destructive;
  * always closed-world). This catches tool-registration regressions and
- * input-schema drift, the failures a server that skips ring 2 ships silently.
+ * input-schema drift, failures that unit tests alone can miss.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -21,7 +21,7 @@ const READ_TOOLS = new Set([
   'live_get_notes',
 ]);
 
-describe('ring 2: listTools over MCP', () => {
+describe('listTools over MCP', () => {
   let conn: Connected;
 
   beforeEach(async () => {

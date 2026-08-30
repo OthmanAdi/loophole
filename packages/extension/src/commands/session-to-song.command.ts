@@ -1,11 +1,12 @@
 /**
- * Session-to-Song Builder (W5, flagship) context-menu command, 03_EXTENSIONS_SPEC §4(c).
+ * Session-to-Song Builder context-menu command.
  *
  * Registers `"Build Arrangement from Session…"` on the `"Scene"` scope, shows the
  * section-map editor pre-filled with the Set's scene list, parses the `{ sections }`
  * the user laid out, and calls the pure-core {@link runSessionToSong} with the bridge.
- * The whole build is one undo (the handler clears the range, recreates each clip, and
- * writes the cue points inside one `LiveBridge.transaction`).
+ * Mutations run in three ordered phases so clear, create, and populate operations cannot
+ * race. A no-op creates no undo entries, a cue-only build creates two, and a build that
+ * clears an occupied arrangement creates three.
  *
  * The handler reads the entire Session itself, so this command does not need to resolve
  * the right-clicked Scene to anything: it only feeds the modal the scene names (so the
@@ -14,9 +15,9 @@
  *
  * SDK-facing; CI-excluded; typechecked locally via `tsconfig.live.json`.
  *
- * RING-3 PENDING (the flagged W5 de-risk): the create-then-populate one-undo grouping
- * inside a single transaction is confirmed only in real Live. The plan + write
- * orchestration is the ring-2 code exercised against `FakeLiveBridge`.
+ * Ableton runtime verification is NOT_RUN here: the ordered clear, create, and populate
+ * phases and their undo restoration remain checks in the manual E2E checklist. Planning
+ * and write orchestration are covered against `FakeLiveBridge`.
  */
 
 import type { ExtensionContext } from '@ableton-extensions/sdk';
@@ -42,7 +43,7 @@ const LABEL = 'Build Arrangement from Session…';
 const DIALOG_WIDTH = 640;
 const DIALOG_HEIGHT = 520;
 
-/** The 4/4 fallback the planner uses for any scene that reports no signature (§4(d)). */
+/** The 4/4 fallback the planner uses for any scene that reports no signature. */
 const FALLBACK_TIME_SIG: TimeSig = { num: 4, den: 4 };
 
 /** Above this section count the write is wrapped in a progress dialog. */
@@ -69,8 +70,8 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
 
 /**
  * Show the section editor (seeded with the scene list), then build the arrangement on
- * Build. The handler reads the Session and writes everything in one undo; a build of
- * more than {@link PROGRESS_THRESHOLD} sections shows a progress dialog around it.
+ * Build. The handler reads the Session and executes the ordered mutation phases; a
+ * build of more than {@link PROGRESS_THRESHOLD} sections shows a progress dialog.
  */
 async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<void> {
   const listedScenes = bridge.listScenes();

@@ -2,7 +2,7 @@
  * The tool collection: an EXPLICIT list of all 12 tool modules.
  *
  * Explicit imports (no glob, no directory scan) so the bundler can see every
- * tool statically and tree-shaking / esbuild never drops one (02_BRIDGE_SPEC §9).
+ * tool statically and tree-shaking / esbuild never drops one.
  * Adding a tool means importing it here and adding it to {@link collectTools}.
  *
  * `registerTool` is re-exported so `server.ts` has a single import site for the

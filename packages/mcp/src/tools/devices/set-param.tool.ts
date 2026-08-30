@@ -4,7 +4,7 @@
  * Set one device parameter (a filter cutoff, a send level) to a value within the
  * parameter's own min..max. One queued transaction = one undo. The model obtains
  * a parameter reference from the `ableton://track/{reference}` resource or from
- * live_insert_device's output (02_BRIDGE_SPEC §5 tool 10).
+ * live_insert_device's output.
  */
 
 import { z } from 'zod';

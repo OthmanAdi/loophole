@@ -1,16 +1,16 @@
 /**
- * Pure scale-snapping transform over {@link NoteDTO}[] (Scale Lock, W1).
+ * Pure scale-snapping transform over {@link NoteDTO}[] for Scale Lock.
  *
  * Like {@link import("./notes.js")}'s transforms, this has no I/O and touches neither
- * the bridge nor the SDK. It is the cheapest, fastest test ring (ring 1) and it
- * encodes the SDK's read-map-assign contract: it returns a fresh array of fresh note
+ * the bridge nor the SDK, so unit tests can exercise it without an Ableton install.
+ * It encodes the SDK's read-map-assign contract: it returns a fresh array of fresh note
  * objects and never mutates its input, exactly how `MidiClip.notes` must be rewritten.
  *
  * The algorithm projects each note's pitch into pitch-class space (0..11, relative to
  * the scale root), and if that pitch class is not in the scale, moves the pitch to the
  * nearest in-scale pitch class in the requested {@link SnapMode} direction. See
- * {@link snapToScale} for the exact rules (tie-breaking, clamping, the empty-scale
- * no-op). Grounded in 03_EXTENSIONS_SPEC §1(b)/§1(f).
+ * {@link snapToScale} for the exact rules, including tie-breaking, clamping, and the
+ * empty-scale no-op.
  */
 
 import type { NoteDTO, Scale, SnapMode } from '../dtos.js';
@@ -114,7 +114,7 @@ function snapDelta(pitch: number, inScale: ReadonlySet<number>, mode: SnapMode):
  * snap to) returns a fresh structural copy with `movedCount: 0`, the same way
  * {@link import("./notes.js").humanizeTiming} returns a copy on a zero amount rather
  * than throwing. The pure core never raises a `BridgeError`; that is the bridge's
- * model. 03_EXTENSIONS_SPEC §1(b)/§1(f).
+ * model.
  */
 export function snapToScale(notes: readonly NoteDTO[], scale: Scale, mode: SnapMode): SnapResult {
   const inScale = inScalePitchClasses(scale);

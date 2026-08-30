@@ -4,11 +4,11 @@ A short description of the change and why. Link the issue it closes (`Closes #12
 
 ## How it was tested
 
-Which rings cover this, and what you ran. If you changed in-Live behavior, say whether you ran the ring 3 smoke checklist and against which Live build.
+Which test tiers cover this, and what you ran. If you changed in-Live behavior, say whether you ran the manual Live smoke checklist and against which Live build.
 
 ## Checklist
 
-- [ ] Tests cover the change (ring 1 and/or ring 2; rings 1 and 2 need no Live).
+- [ ] Tests cover the change (unit and/or integration tests, neither needs Live).
 - [ ] `pnpm typecheck` is green (`tsc --noEmit`, hard gate).
 - [ ] `pnpm lint` is green.
 - [ ] `pnpm format:check` passes (`pnpm format` to fix).
@@ -16,7 +16,7 @@ Which rings cover this, and what you ran. If you changed in-Live behavior, say w
 - [ ] If a new SDK capability is used: the `LiveBridge` interface, `FakeLiveBridge`, and `AbletonLiveBridge` all updated, with a contract test so the fake cannot drift.
 - [ ] Docs updated if the tool surface or behavior changed.
 - [ ] A changeset is added if this changes published behavior (`pnpm changeset`).
-- [ ] If in-Live behavior changed: the ring 3 smoke checklist was run, and the tested Live build is noted above.
+- [ ] If in-Live behavior changed: the manual Live smoke checklist was run, and the tested Live build is noted above.
 
 ## Notes
 

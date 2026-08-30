@@ -1,12 +1,12 @@
 /**
- * Ring 1 (unit) — every tool's Zod input REJECT path.
+ * Unit coverage for every tool's Zod input rejection path.
  *
- * The first line of the error model (02_BRIDGE_SPEC §7, §8): a malformed argument
+ * The first line of the error model: a malformed argument
  * must be rejected by the tool's Zod schema BEFORE the handler ever runs, so a bad
  * call is a clean validation failure, not a stack trace. Over the MCP wire the SDK
  * parses `args` against this same schema and turns a failure into a clean
  * `isError: true` "Input validation error" result (asserted in the integration
- * ring); here we assert the schema layer directly, which is where the rejection is
+ * tests); here we assert the schema layer directly, which is where the rejection is
  * decided.
  *
  * The cases are driven off `collectTools()`, so EVERY one of the 12 tools is
@@ -394,7 +394,7 @@ const toolsByName: ReadonlyMap<string, ToolModule> = new Map(
   collectTools().map((tool) => [tool.name, tool]),
 );
 
-describe('ring 1: every tool covers a Zod input reject path', () => {
+describe('every tool covers a Zod input reject path', () => {
   it('there is one input-validation case per registered tool', () => {
     const caseNames = Object.keys(CASES).sort();
     const toolNames = [...toolsByName.keys()].sort();

@@ -2,7 +2,7 @@ name: Deploy docs
 
 # MANUAL ONLY. This workflow is workflow_dispatch, so committing it never
 # publishes anything: it runs only when a maintainer triggers it from the Actions
-# tab. Nothing in this wave is deployed automatically (the launch gate: nothing
+# tab. This workflow does not deploy automatically (the policy is that nothing
 # public ships without explicit approval).
 on:
   workflow_dispatch:

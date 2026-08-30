@@ -14,11 +14,11 @@
 /**
  * Stable, machine-checkable error codes.
  *
- * - `STALE_REFERENCE`: an id pointed at an object that no longer exists (deleted,
- *   or never existed). Recovery: re-list and use a fresh id.
- * - `WRONG_TYPE`: an id resolved to the wrong object kind for the operation
- *   (e.g. a `setNotes` on an audio clip). Recovery: use an id from the matching
- *   list/read call.
+ * - `STALE_REFERENCE`: a reference identified an object that no longer exists
+ *   (deleted, or never existed). Recovery: re-list and use a newly issued reference.
+ * - `WRONG_TYPE`: a reference resolved to the wrong object kind for the operation
+ *   (e.g. a `setNotes` on an audio clip). Recovery: use a reference from the
+ *   matching list/read call.
  * - `BAD_INPUT`: an argument was out of range or malformed before any SDK call
  *   (e.g. a non-positive clip duration, a transaction callback that returned a
  *   non-Promise). Recovery: fix the argument.
@@ -49,14 +49,14 @@ const DEFAULT_HINTS: Record<BridgeErrorCode, string> = {
 
 /**
  * The single error type the bridge raises. Carries the {@link BridgeErrorCode}, a
- * recovery hint, and an optional offending id / cause for diagnostics.
+ * recovery hint, and an optional offending reference / cause for diagnostics.
  */
 export class BridgeError extends Error {
   override readonly name = 'BridgeError';
   readonly code: BridgeErrorCode;
   /** Actionable hint for the caller (and, downstream, for the model). */
   readonly hint: string;
-  /** The path id involved, when the failure is about a specific object. */
+  /** The opaque session reference involved when the failure concerns a specific object. */
   readonly subjectId?: string;
 
   constructor(
@@ -85,7 +85,7 @@ export function isBridgeErrorOfCode(value: unknown, code: BridgeErrorCode): valu
 
 // --- constructor helpers (so call sites stay one line and consistent) ---
 
-/** An id pointed at a deleted or unknown object. */
+/** An opaque session reference identified a deleted or unknown object. */
 export function staleReference(subjectId: string, detail?: string): BridgeError {
   return new BridgeError(
     'STALE_REFERENCE',
@@ -94,7 +94,7 @@ export function staleReference(subjectId: string, detail?: string): BridgeError 
   );
 }
 
-/** An id resolved to the wrong object kind for this operation. */
+/** An opaque session reference resolved to the wrong object kind for this operation. */
 export function wrongType(subjectId: string, expected: string, detail?: string): BridgeError {
   return new BridgeError('WRONG_TYPE', detail ?? `Object "${subjectId}" is not a ${expected}.`, {
     subjectId,

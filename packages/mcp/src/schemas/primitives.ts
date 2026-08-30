@@ -1,7 +1,6 @@
 /**
  * Shared Zod v4 schema atoms: the building blocks every tool input reuses so
- * that references, beats, pitch, and the note shape are identical across all 12 tools
- * (02_BRIDGE_SPEC §5.0).
+ * that references, beats, pitch, and the note shape are identical across all 12 tools.
  *
  * Each atom carries a `.describe(...)` so the description surfaces in the tool's
  * published JSON Schema and the model knows the units and the source of a reference.

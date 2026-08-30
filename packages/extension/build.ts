@@ -1,17 +1,17 @@
 /**
- * LOCAL-ONLY esbuild bundler for the Loophole Kit `.ablx` (ARCHITECTURE_DECISIONS §6).
+ * LOCAL-ONLY esbuild bundler for the Loophole Kit `.ablx`.
  *
  * This is NOT run in CI and is NOT the committed `package.json` `build` script (that
  * stays a no-op placeholder so the SDK-free CI `pnpm -r build` passes). It is the real
  * bundle the licensee runs locally, with the Ableton Extensions SDK installed from
- * their own `.tgz` (the SDK is bundled INTO the `.ablx`, which the license permits;
- * ARCHITECTURE_DECISIONS §1 right b). It mirrors the official examples' `build.ts`:
+ * their own `.tgz` (the SDK is bundled INTO the `.ablx` under the license terms). It
+ * mirrors the official examples' `build.ts`:
  * one entry (`src/extension.ts`), CJS, Node platform, `bundle: true`, and the crucial
  * `.html` text loader so the per-extension webview HTML is inlined as a string (exactly
  * how `examples/modal-dialog/build.ts` inlines its `interface.html`).
  *
- * Run locally (after installing the SDK + CLI `.tgz` per ARCHITECTURE_DECISIONS §4 and
- * the extension README; the committed tree stays SDK-free):
+ * Run locally after installing the SDK + CLI `.tgz` as described in the extension
+ * README (the committed tree stays SDK-free):
  *   pnpm --filter @othmanadi/loophole-extension run build:live      // dev bundle
  *   pnpm --filter @othmanadi/loophole-extension run package:live    // production + .ablx
  *

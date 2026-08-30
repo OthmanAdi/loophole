@@ -4,7 +4,7 @@
  * See what clips exist on one track, with the opaque references needed to read or write them.
  * Reports Session-view slots (including empty ones, so the model knows where it
  * can create a clip) and Arrangement clips, each tagged with its location and
- * kind (02_BRIDGE_SPEC §5, tool 3).
+ * kind.
  */
 
 import { z } from 'zod';

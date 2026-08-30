@@ -1,5 +1,5 @@
 /**
- * Ring 1 (unit) — `safeHandle`'s catch-and-map contract (02_BRIDGE_SPEC §7.2).
+ * Unit coverage for `safeHandle`'s catch-and-map contract.
  *
  * `safeHandle` is the single place a tool failure is converted into a clean
  * `{ isError: true }` result, so a tool body never throws to the MCP protocol.
@@ -48,7 +48,7 @@ function code(result: ToolResult): unknown {
   return result.structuredContent?.code;
 }
 
-describe('ring 1: safeHandle maps each BridgeError code to its hint', () => {
+describe('safeHandle maps each BridgeError code to its hint', () => {
   // One representative BridgeError per code, built through the core helpers so the
   // default hint per code is the one the model will actually see.
   const cases: readonly { readonly code: BridgeErrorCode; readonly error: BridgeError }[] = [
@@ -88,7 +88,7 @@ describe('ring 1: safeHandle maps each BridgeError code to its hint', () => {
   });
 });
 
-describe('ring 1: safeHandle handles non-BridgeError throws and success', () => {
+describe('safeHandle handles non-BridgeError throws and success', () => {
   it('maps an arbitrary Error to a generic correlated result without leaking internals', async () => {
     const errorSpy = vi.spyOn(log, 'error').mockImplementation(() => undefined);
     const privateMessage = 'socket failed at C:\\Users\\developer\\Ableton\\bridge.ts:41';

@@ -9,7 +9,7 @@
   "engines": {
     "node": ">=24.14.1"
   },
-  "comment:scripts": "typecheck/lint/test/build are the CI-safe gates: they run with NO Ableton SDK present (the beta SDK is non-redistributable, never committed; ARCHITECTURE_DECISIONS.md §1/§3). The CI tsconfig + eslint config exclude every SDK-importing file, and `build` is a deliberate no-op placeholder so `pnpm -r build` stays green SDK-free. The `*:live` scripts are LOCAL-ONLY: they require the licensee to install the SDK + CLI tarballs first (`pnpm add file:<sdk>.tgz` and the cli .tgz; see README), and to copy tsconfig.live.example.json to the gitignored tsconfig.live.json. None of those local changes are committed.",
+  "comment:scripts": "typecheck/lint/test/build are the CI-safe gates: they run with NO Ableton SDK present because the beta SDK is non-redistributable and never committed. The CI tsconfig + eslint config exclude every SDK-importing file, and `build` is a deliberate no-op placeholder so `pnpm -r build` stays green SDK-free. The `*:live` scripts are LOCAL-ONLY: they require the licensee to install the SDK + CLI tarballs first (`pnpm add file:<sdk>.tgz` and the cli .tgz; see README), and to copy tsconfig.live.example.json to the gitignored tsconfig.live.json. None of those local changes are committed.",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

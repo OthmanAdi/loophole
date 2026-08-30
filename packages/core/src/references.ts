@@ -1,7 +1,7 @@
 /**
  * Opaque, session-scoped references for objects exposed across the Loophole wire.
  *
- * Unlike the legacy positional path ids, these references contain no Live object
+ * Unlike retired positional locators, these references contain no Live object
  * path or array index. A caller must resolve them through a session-owned registry,
  * which can reject references that are unknown, expired, or used as the wrong kind.
  * This module deliberately imports neither Node APIs nor either external SDK.

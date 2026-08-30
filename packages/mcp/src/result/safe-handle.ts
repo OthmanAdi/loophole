@@ -1,6 +1,6 @@
 /**
  * The single place a tool failure is caught and mapped, so a tool body NEVER
- * throws to the MCP protocol (02_BRIDGE_SPEC §7.2).
+ * throws to the MCP protocol.
  *
  * Every SDK-shaped failure reaches the tool layer as a typed `BridgeError`
  * thrown by the bridge, carrying a stable {@link BridgeErrorCode} and a recovery

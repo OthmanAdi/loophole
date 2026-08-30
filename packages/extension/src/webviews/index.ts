@@ -14,8 +14,9 @@
  * string work and is therefore safe regardless of layer. It lives beside the HTML so
  * the `*.html` text imports resolve through the local {@link html.d.ts} ambient module.
  *
- * RING-3 PENDING: the exact `data:` URL handling and the postMessage round-trip are
- * verified only in real Live (the bundler inlines the HTML; the SDK loads the URL).
+ * Ableton runtime verification is NOT_RUN here: the exact `data:` URL handling and
+ * postMessage round-trip remain checks in the manual E2E checklist (the bundler inlines
+ * the HTML; the SDK loads the URL).
  */
 
 import scaleLockHtml from './scale-lock.html';

@@ -4,7 +4,7 @@
  * Add one empty MIDI or audio track at the end of the track list. One queued
  * transaction = one undo. Naming is a SEPARATE call: the SDK cannot
  * create-then-configure in one transaction, so the model renames the new track
- * with live_set_track_props afterwards (02_BRIDGE_SPEC §4, §5 tool 8).
+ * with live_set_track_props afterwards.
  */
 
 import { z } from 'zod';

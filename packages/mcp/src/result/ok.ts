@@ -4,11 +4,10 @@
  * Every one of the 12 tools returns a {@link ToolResult}. It is deliberately a
  * structural subset of the MCP SDK's `CallToolResult` (text content + optional
  * `structuredContent` + optional `isError`), so a handler can be typed purely in
- * terms of this local type and never imports the MCP SDK (the import boundary in
- * 02_BRIDGE_SPEC §9). `registry.ts` adapts it to the SDK callback type in one
- * place.
+ * terms of this local type and never imports the MCP SDK. `registry.ts` adapts
+ * it to the SDK callback type in one place.
  *
- * Two halves of the contract (02_BRIDGE_SPEC §7):
+ * Two halves of the result contract:
  *  - `ok(data, summary)` returns a human-readable `summary` as text AND the typed
  *    `data` as `structuredContent`, so a model reads prose while a programmatic
  *    client can consume JSON. The complete UTF-8 JSON envelope is size-capped.

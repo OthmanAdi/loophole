@@ -21,10 +21,10 @@
  * an adapter-layer file: excluded from the committed CI tsconfig, typechecked locally
  * against the real `.d.mts` via `tsconfig.live.json`.
  *
- * RING-3 PENDING (no Ableton here): the precise handle a given scope passes, and
- * whether a right-clicked Session clip is always reachable through its slot, are typed
- * against v1.0.0-beta.0 but confirmed only by the manual E2E checklist. The match logic
- * is pure index arithmetic over typed getters.
+ * Ableton runtime verification is NOT_RUN here: the precise handle a given scope
+ * passes, and whether a right-clicked Session clip is always reachable through its
+ * slot, are typed against v1.0.0-beta.0 but remain checks in the manual E2E checklist.
+ * The match logic is pure index arithmetic over typed getters.
  */
 
 import {
@@ -119,8 +119,8 @@ export function trackIdFromHandle(
 /**
  * Resolve every MIDI clip in a {@link ClipSlotSelection} (the `"ClipSlotSelection"`
  * scope) to its {@link ClipId}. Each selected slot handle is matched to its `(track,
- * slot)` position; a slot that is empty or holds a non-MIDI clip is skipped (Scale Lock
- * and Humanize act on MIDI clips only, 03_EXTENSIONS_SPEC §1(c)/§2(c)). De-duplicates
+ * slot)` position; a slot that is empty or holds a non-MIDI clip is skipped because
+ * Scale Lock and Humanize act on MIDI clips only. De-duplicates
  * while preserving first-seen order.
  *
  * @returns the MIDI {@link ClipId}s among the selection, in selection order.
@@ -182,8 +182,8 @@ function locateSlot(
 /**
  * Resolve every audio track lane in an {@link ArrangementSelection} (the
  * `"AudioTrack.ArrangementSelection"` scope) to its {@link TrackId}. Each selected lane
- * handle is resolved and kept only when it is an {@link AudioTrack} (Gain Stage Doctor
- * renders audio tracks only, 03_EXTENSIONS_SPEC §3). De-duplicates, preserving order.
+ * handle is resolved and kept only when it is an {@link AudioTrack}, because Gain Stage
+ * Doctor renders audio tracks only. De-duplicates, preserving order.
  *
  * @returns the audio-track {@link TrackId}s in the selection, plus the selection's beat
  *   range, so the caller can bound the render to exactly what the user selected.
@@ -223,7 +223,7 @@ export function audioTrackSelectionToTargets(
 /**
  * Narrow a resolved clip to whether it is a MIDI clip (for a single-clip scope). The
  * runtime registry instantiates the concrete subclass, so `instanceof MidiClip` is the
- * documented narrowing (01_SDK_MAP §0 Rule B). Exposed so a command can refuse a
+ * supported narrowing. Exposed so a command can refuse a
  * non-MIDI right-click before opening a modal.
  */
 export function isMidiClipHandle(context: ExtensionContext<V>, handle: Handle): boolean {

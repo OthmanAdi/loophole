@@ -48,7 +48,7 @@ describe('opaque session-reference shape', () => {
     }
   });
 
-  it('strictly rejects malformed, positional, and legacy path ids', () => {
+  it('strictly rejects malformed and retired positional reference formats', () => {
     const malformed = [
       '',
       'track:2',

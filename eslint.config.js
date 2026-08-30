@@ -15,7 +15,7 @@ export default tseslint.config(
       '**/*.config.ts',
       '**/*.config.mjs',
       // Local-only esbuild bundler for the .ablx (not in any CI tsconfig, runs via tsx
-      // with the SDK installed locally; see ARCHITECTURE_DECISIONS §6). Same class as
+      // with the SDK installed locally; see the extension's local SDK instructions). Same class as
       // the *.config.ts files above: tooling, not shipped, not type-checked in CI.
       '**/build.ts',
       // The four SDK-importing adapter modules are excluded from committed CI because

@@ -4,20 +4,19 @@
  * This is config ONLY. It carries the loopback host, the port-probe range, and
  * the output character limit, and it validates them. It does NOT open a socket,
  * import `node:http`, or read the filesystem: the transport, auth, and
- * `bridge.json` discovery are the extension shell's concern in a later wave
- * (02_BRIDGE_SPEC §1.3, §2). The values here are the contract those later
- * pieces, and the result helpers, read from.
+ * `bridge.json` discovery are the extension shell's concern. The values here
+ * are the contract that integration layer and the result helpers read from.
  */
 
 import { z } from 'zod';
 
-/** Lowest port the bridge probes for its loopback listener (02_BRIDGE_SPEC §1.2). */
+/** Lowest port the bridge probes for its loopback listener. */
 export const PORT_RANGE_START = 8420;
 /** Highest port the bridge probes for its loopback listener. */
 export const PORT_RANGE_END = 8429;
-/** The loopback host the bridge binds to; never `0.0.0.0` (02_BRIDGE_SPEC §2). */
+/** The loopback host the bridge binds to; never `0.0.0.0`. */
 export const DEFAULT_HOST = '127.0.0.1';
-/** Hard cap on a tool/resource text payload, in characters (02_BRIDGE_SPEC §8). */
+/** Hard cap on a tool/resource text payload, in characters. */
 export const CHARACTER_LIMIT = 25_000;
 
 /**

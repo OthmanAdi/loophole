@@ -1,6 +1,6 @@
 /**
  * `AbletonLiveBridge`: the real, in-Live implementation of the core {@link LiveBridge}
- * port (00_MASTER_PLAN §5, 02_BRIDGE_SPEC §9, the locked import boundary). The SDK is
+ * port and the SDK import boundary. The SDK is
  * imported only by the adapter, the five command modules, and `activate()`, all excluded
  * from the committed CI tsconfig. Everything that touches a `Handle`, an `instanceof`,
  * the {@link WriteQueue}, and `withinTransaction` lives behind this seam, so the MCP
@@ -8,8 +8,7 @@
  * type.
  *
  * It is constructed once in `activate()` from the {@link ExtensionContext} returned by
- * `initialize(activation, "1.0.0")` and lives for the whole Live session
- * (02_BRIDGE_SPEC §1.1, §1.3):
+ * `initialize(activation, "1.0.0")` and lives for the whole Live session:
  *
  * ```ts
  * const context = initialize(activation, '1.0.0');
@@ -17,33 +16,33 @@
  * const server = buildServer(bridge);
  * ```
  *
- * Contract mapping (verbatim from 01_SDK_MAP §0 and 02_BRIDGE_SPEC §4), kept aligned to
- * {@link import("@othmanadi/loophole-core").FakeLiveBridge} so the two pass the same
- * contract tests:
+ * The adapter contract stays aligned with {@link
+ * import("@othmanadi/loophole-core").FakeLiveBridge} so both implementations pass the
+ * same contract tests:
  *  - READS resolve a fresh object via the {@link Resolver}, shape it through
  *    {@link import("./mappers.js")}, and bypass the queue (no transaction, no undo step).
  *    Most are synchronous handle-backed getters. The two exceptions, `getTrackMixer` and
  *    `listDeviceParams`, are async: a parameter's live `value` comes from
- *    `DeviceParameter.getValue()`, the one async getter (01_SDK_MAP §2), so they `await`
- *    it for the REAL value and return a Promise. They are still pure reads.
+ *    `DeviceParameter.getValue()`, the one async getter, so they `await` it for the real
+ *    value and return a Promise. They are still pure reads.
  *  - PROPERTY SETTERS are synchronous: `track.name = x`, `clip.color = c`,
- *    `cuePoint.name = n` commit immediately and are NEVER awaited (01_SDK_MAP §0 Rule
- *    A). Only `create*` / `delete*` / `insertDevice` / `DeviceParameter.setValue` /
+ *    `cuePoint.name = n` commit immediately and are never awaited. Only `create*` /
+ *    `delete*` / `insertDevice` / `DeviceParameter.setValue` /
  *    `renderPreFxAudio` are awaited.
  *  - MUTATIONS run through the {@link WriteQueue} (one FIFO) and are wrapped in
  *    `context.withinTransaction`, so one method call = one undo. The transaction
  *    callback is SYNCHRONOUS and returns the Promise(s) to batch; you cannot
  *    create-then-configure in one transaction (you need the instance first), so a
- *    "create then set props" intent is two sequential transactions (02_BRIDGE_SPEC §4).
+ *    "create then set props" intent is two sequential transactions.
  *  - Type narrowing uses `instanceof` (in the {@link Resolver} and mappers), throwing
  *    the core {@link import("@othmanadi/loophole-core").BridgeError}s `WRONG_TYPE` /
  *    `STALE_REFERENCE` / `BAD_INPUT` / `SDK_REJECTED`.
  *
- * RING-3 PENDING (no Ableton here; nothing below is Live-proven): the one-undo behavior
- * of each mutation, the two-step create-then-rename of a cue point (TWO undo steps, an
- * SDK limitation, see {@link AbletonLiveBridge.createCuePoint}), the W3 dB→internal
- * volume mapping, and the install / `.ablx` flow are verified only by the manual
- * `E2E_CHECKLIST.md`. The code is typed against the real v1.0.0-beta.0 `.d.mts`.
+ * Ableton runtime verification is NOT_RUN here: each mutation's undo behavior, the
+ * two-step create-then-rename of a cue point (two undo steps, an SDK limitation; see
+ * {@link AbletonLiveBridge.createCuePoint}), Gain Stage Doctor's dB-to-internal-volume
+ * mapping, and the install / `.ablx` flow remain manual checks in `E2E_CHECKLIST.md`.
+ * The code is typed against the real v1.0.0-beta.0 `.d.mts`.
  */
 
 import {
@@ -283,8 +282,8 @@ export class AbletonLiveBridge implements LiveBridge {
 
   async listDeviceParams(id: TrackId): Promise<readonly DeviceParamInfo[]> {
     // ASYNC read (no undo step): a parameter's current value comes from
-    // DeviceParameter.getValue(), the one async getter (01_SDK_MAP §2). paramInfo awaits
-    // that real value; the reads run in parallel with Promise.all, order preserved so the
+    // DeviceParameter.getValue(), the one async getter. paramInfo awaits that real value;
+    // the reads run in parallel with Promise.all, order preserved so the
     // param ids line up with their index.
     const { track, index } = this.#resolver.resolveTrack(id);
     const params = track.devices.flatMap((device, deviceIndex) =>
@@ -303,10 +302,10 @@ export class AbletonLiveBridge implements LiveBridge {
 
   async getTrackMixer(id: TrackId): Promise<TrackMixerInfo> {
     // ASYNC read (no undo step): the volume's live value comes from
-    // DeviceParameter.getValue(), the one async getter (01_SDK_MAP §2). trackMixerInfo
-    // awaits the real value and exposes the volume as an addressable parameter whose id is
-    // track:N/mixer/volume, so Gain Stage Doctor reads the true level to fit the dB
-    // mapping and commits the trim via setParam (one undo).
+    // DeviceParameter.getValue(), the one async getter. trackMixerInfo awaits the real
+    // value and exposes the volume through an opaque, session-scoped parameter reference,
+    // so Gain Stage Doctor reads the true level to fit the dB mapping and commits the
+    // trim via setParam (one undo).
     const { track, index } = this.#resolver.resolveTrack(id);
     return trackMixerInfo(
       track.mixer,
@@ -453,7 +452,7 @@ export class AbletonLiveBridge implements LiveBridge {
     }
     const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'midi');
-      // MidiTrack.createMidiClip(startTime, duration): POSITIONAL args (01_SDK_MAP §2).
+      // MidiTrack.createMidiClip(startTime, duration) takes two positional beat values.
       return track.createMidiClip(startBeat, lengthBeats);
     });
     const { index } = this.#resolver.resolveTrackOfKind(id, 'midi');
@@ -472,8 +471,8 @@ export class AbletonLiveBridge implements LiveBridge {
     }
     const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
-      // AudioTrack.createAudioClip({ filePath, startTime, duration }): SINGLE-OBJECT arg
-      // with startTime REQUIRED (01_SDK_MAP §2 / §createClip table).
+      // AudioTrack.createAudioClip({ filePath, startTime, duration }) takes one object,
+      // with startTime required.
       return track.createAudioClip({
         filePath: args.filePath,
         startTime: args.startTime,
@@ -495,8 +494,8 @@ export class AbletonLiveBridge implements LiveBridge {
     }
     await this.#write(() => {
       const { track } = this.#resolver.resolveTrack(id);
-      // Track.clearClipsInRange(startTime, endTime): clips overlapping a boundary are
-      // TRUNCATED, not deleted (01_SDK_MAP §2).
+      // Track.clearClipsInRange(startTime, endTime) truncates clips that overlap a
+      // boundary; it does not delete them.
       return track.clearClipsInRange(startBeat, endBeat);
     });
   }
@@ -581,8 +580,7 @@ export class AbletonLiveBridge implements LiveBridge {
   async renderTrack(id: TrackId, startBeat: number, endBeat: number): Promise<RenderResult> {
     // A render produces a file and does NOT change the Set, so it is NOT wrapped in a
     // transaction (nothing to undo). It is queued so the I/O does not interleave with
-    // structural writes (02_BRIDGE_SPEC §5 tool 12). renderPreFxAudio takes an
-    // AudioTrack only.
+    // structural writes. renderPreFxAudio takes an AudioTrack only.
     if (!Number.isFinite(startBeat) || startBeat < 0) {
       throw badInput(`startBeat ${String(startBeat)} must be a finite non-negative number.`);
     }

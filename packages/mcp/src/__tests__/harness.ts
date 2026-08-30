@@ -1,11 +1,11 @@
 /**
- * Ring 2 test harness: wire a real MCP `Client` to a real `buildServer(bridge)`
- * over `InMemoryTransport.createLinkedPair()` (02_BRIDGE_SPEC §8).
+ * MCP integration test harness: wire a real `Client` to a real
+ * `buildServer(bridge)` over `InMemoryTransport.createLinkedPair()`.
  *
  * No HTTP, no auth, no port, no Ableton: the exact same server code that runs in
  * `activate()` runs here against a `FakeLiveBridge`. The auth / `node:http` /
  * Origin layer is the extension's concern and is deliberately NOT in this path;
- * ring 2 tests protocol-to-tool-to-bridge behaviour.
+ * these integration tests cover protocol-to-tool-to-bridge behaviour.
  *
  * This module is a `.ts` helper (not a `*.test.ts`), so Vitest does not collect it
  * as a suite; the integration test files import `connect` and the scan helpers.
@@ -70,10 +70,11 @@ export function resultCode(result: ToolCallResult): unknown {
 
 /**
  * Assert that a serialized value carries NO forbidden host shape: no `bigint`
- * anywhere, and no property named `handle` or `id` whose value looks like a raw
- * SDK handle (`{ id: <number|bigint> }`). The bridge's public address is a string
- * opaque session reference, never a `Handle` and never a `bigint`; this guards
- * the serialization boundary (02_BRIDGE_SPEC §3, §8).
+ * anywhere, no property named `handle`, and no object-reference field whose
+ * value looks like a raw SDK handle (`{ id: <number|bigint> }`). The bridge's
+ * public address is an opaque session reference string, never a `Handle` and
+ * never a `bigint`; this guards
+ * the serialization boundary.
  *
  * Throws with a descriptive message on the first violation; returns silently when
  * clean. Designed to walk an arbitrary JSON-able object graph.
@@ -102,7 +103,8 @@ export function assertNoForbiddenShapes(value: unknown, path = '$'): void {
     }
   }
   // A property literally named `handle` is the SDK reference type and must never
-  // be serialized; ids are carried as opaque string references, not a `handle`.
+  // be serialized. Addressable Live-object `id` fields carry opaque session
+  // reference strings, not a `handle`.
   if ('handle' in record) {
     throw new Error(`Forbidden "handle" property on the wire at ${path}.handle`);
   }

@@ -1,5 +1,5 @@
 /**
- * Ring 2 (integration) — the four READ tools over the MCP wire (02_BRIDGE_SPEC §8).
+ * Integration coverage for the four READ tools over the MCP wire.
  *
  * Each read tool is called against a seeded `FakeLiveBridge`, and we assert the
  * serialized response shape (names + opaque references), that the structured payload
@@ -20,7 +20,7 @@ import {
   type Connected,
 } from './harness.js';
 
-describe('ring 2: read tools over MCP', () => {
+describe('read tools over MCP', () => {
   let live: FakeLiveBridge;
   let conn: Connected;
   let drumsTrack: TrackReference;

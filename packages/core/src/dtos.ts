@@ -56,7 +56,7 @@ export interface NoteDTO {
 /**
  * One entry in {@link SongOverview.tracks}: the minimum a model needs to address a
  * track in a follow-up call. Mirrors the `live_get_song_overview` track list, which
- * pairs each human name with the stable id and concrete kind.
+ * pairs each human name with an opaque track reference and concrete kind.
  */
 export interface TrackRef {
   readonly id: TrackId;
@@ -82,7 +82,7 @@ export interface ScaleInfo {
 
 /**
  * The Set's grid quantization state, surfaced in the overview snapshot and consumed
- * by Humanize (W2) to scale a nudge to "up to ± half a grid cell".
+ * by Humanize to scale a nudge to "up to ± half a grid cell".
  *
  * `beatsPerCell` is the width of one grid cell in beats, DERIVED from the two raw
  * fields the {@link SongOverview} reports (`gridQuantization` + `gridIsTriplet`). It
@@ -99,8 +99,8 @@ export interface ScaleInfo {
  * In general `beatsPerCell = (4 / denominator) * (isTriplet ? 2 / 3 : 1)`, where
  * `denominator` is the number under the `1/` in the label. When Live reports a grid
  * label this code does not recognise (e.g. `'None'`), the derivation falls back to a
- * sane default of one beat (a quarter-note cell); the stage-2 handler decides
- * whether to apply Humanize at all in that case.
+ * sane default of one beat (a quarter-note cell); the command handler decides whether
+ * to apply Humanize at all in that case.
  */
 export interface GridInfo {
   /** Live's grid quantization label (e.g. the value of `song.gridQuantization`). */
@@ -226,7 +226,7 @@ interface ClipInfoBase {
    * Absolute path to the source audio file, present ONLY for audio clips (mirrors
    * `AudioClip.filePath`). Omitted for MIDI clips and empty slots
    * (`exactOptionalPropertyTypes`: a missing key, never `filePath: undefined`).
-   * Session-to-Song (W5) reads this to reference an audio clip by file when it
+   * Session-to-Song reads this to reference an audio clip by file when it
    * recreates the clip on the Arrangement timeline.
    */
   readonly filePath?: string;
@@ -326,7 +326,7 @@ export interface TrackPropsPatch {
 /**
  * A structured track filter (name substring + kind). Not used by the current port
  * ({@link import("./live-bridge.js").LiveBridge.findTrack} takes a plain string); kept
- * as a forward-declared shape for richer multi-criteria queries in a later wave.
+ * as a forward-declared shape for future richer multi-criteria queries.
  */
 export interface TrackQuery {
   /** Case-insensitive substring match against the track name. */
@@ -339,8 +339,7 @@ export interface TrackQuery {
  * Arguments for creating a MIDI clip on the Arrangement timeline (positional
  * `start` + `duration`, per `MidiTrack.createMidiClip`). Not used by the current
  * port ({@link import("./live-bridge.js").LiveBridge.createMidiClip} targets a Session
- * slot); kept as a forward-declared shape for arrangement-clip creation in a later
- * wave.
+ * slot); kept as a forward-declared shape for future arrangement-clip creation.
  */
 export interface CreateMidiClipArgs {
   /** Target track. */
@@ -372,9 +371,9 @@ export interface RenderResult {
 
 /**
  * Arguments for creating an audio clip on the Arrangement timeline by file
- * reference, mirroring `AudioTrack.createAudioClip({ filePath, startTime, duration })`
- * (01_SDK_MAP §2). `startTime` is the arrangement position in beats and `duration`
- * is the clip length in beats. Used by
+ * reference, mirroring `AudioTrack.createAudioClip({ filePath, startTime, duration })`.
+ * `startTime` is the arrangement position in beats and `duration` is the clip length
+ * in beats. Used by
  * {@link import("./live-bridge.js").LiveBridge.createArrangementAudioClip} so
  * Session-to-Song can reference an audio clip by its source file.
  */
@@ -388,8 +387,8 @@ export interface CreateAudioClipArgs {
 }
 
 /**
- * The single writable mixer parameter Gain Stage Doctor (W3) cares about: the
- * track's volume, as a {@link DeviceParamInfo} carrying a stable {@link ParamId}.
+ * The single writable mixer parameter Gain Stage Doctor cares about: the track's
+ * volume, as a {@link DeviceParamInfo} carrying an opaque {@link ParamId}.
  *
  * Result of {@link import("./live-bridge.js").LiveBridge.getTrackMixer}. The handler
  * reads `volume.min` / `volume.max` / `volume.defaultValue` / `volume.value` to fit
@@ -404,20 +403,19 @@ export interface TrackMixerInfo {
 }
 
 // ===========================================================================
-// Transform input/output types (Wave B, stage 2).
+// Transform input/output types.
 //
-// The shapes the five pure transforms consume and produce. They are defined here
-// so the stage-2 agents only implement functions and never touch a shared file.
+// The shapes the five pure transforms consume and produce are defined here so the
+// transformation boundary stays plain-data-only and independent from host handles.
 // All are plain and handle-free; object references are opaque session references.
-// Each is grounded in a section of 03_EXTENSIONS_SPEC; section refs are inline.
 // ===========================================================================
 
-// --- Scale Lock (W1), 03_EXTENSIONS_SPEC §1 ---
+// --- Scale Lock ---
 
 /**
  * The direction `snapToScale` moves an off-scale note: to the next in-scale pitch
  * `'up'`, the previous one `'down'`, or whichever is closer `'nearest'` (the UI
- * default). 03_EXTENSIONS_SPEC §1(b)/§1(c).
+ * default).
  */
 export type SnapMode = 'up' | 'down' | 'nearest';
 
@@ -427,8 +425,8 @@ export type SnapMode = 'up' | 'down' | 'nearest';
  * builds from the Set's scale state ({@link ScaleInfo} / {@link SongOverview}):
  * `{ root: overview.rootNote, intervals: overview.scaleIntervals }`. Kept separate
  * from {@link ScaleInfo} (which also carries the display name and Scale-Mode flag)
- * so the pure function takes only what it uses, per 03_EXTENSIONS_SPEC §0/§1(b)
- * (`snapToScale(notes, { root, intervals }, mode)`).
+ * so the pure function takes only what it uses:
+ * `snapToScale(notes, { root, intervals }, mode)`.
  */
 export interface Scale {
   /** Root note as a pitch class 0..11 (C..B). */
@@ -437,14 +435,14 @@ export interface Scale {
   readonly intervals: readonly number[];
 }
 
-// --- Humanize / Groove Sculptor (W2), 03_EXTENSIONS_SPEC §2 ---
+// --- Humanize / Groove Sculptor ---
 
 /**
- * Options for `humanize`, mapped one-to-one from the Humanize modal
- * (03_EXTENSIONS_SPEC §2(c)). `strength` and `swing` are 0..1 fractions (the UI
- * shows 0-100%); `strength` 0 is an identity transform (§2(f)). The three `do*`
+ * Options for `humanize`, mapped one-to-one from the Humanize modal. `strength` and
+ * `swing` are 0..1 fractions (the UI shows 0-100%); `strength` 0 is an identity
+ * transform. The three `do*`
  * flags gate which `NoteDescription` fields are nudged; `living`, when set, also
- * writes `probability` / `velocityDeviation` for a less mechanical feel (§2(b)).
+ * writes `probability` / `velocityDeviation` for a less mechanical feel.
  */
 export interface HumanizeOpts {
   /** Overall amount, 0..1 (UI 0-100%). At 0, `humanize` returns its input unchanged. */
@@ -461,13 +459,13 @@ export interface HumanizeOpts {
   readonly living?: boolean;
 }
 
-// --- Gain Stage Doctor (W3), 03_EXTENSIONS_SPEC §3 ---
+// --- Gain Stage Doctor ---
 
 /**
  * Result of `analyzeLoudness(channels)`: the measured levels of a rendered audio
- * region (03_EXTENSIONS_SPEC §3(b)). `peakDb` is `max|sample|` in dBFS, `rmsDb` is
+ * region. `peakDb` is `max|sample|` in dBFS, `rmsDb` is
  * the RMS level in dBFS, and `crest` is the crest factor (`peakDb - rmsDb`, in dB).
- * Silence maps `peakDb`/`rmsDb` to a guarded floor rather than `-Infinity` (§3(f)).
+ * Silence maps `peakDb`/`rmsDb` to a guarded floor rather than `-Infinity`.
  */
 export interface LoudnessResult {
   /** True-peak level in dBFS (`max|sample|` → dB). */
@@ -482,7 +480,7 @@ export interface LoudnessResult {
 
 /**
  * The slice of a mixer-volume {@link DeviceParamInfo} that `dbToParamValue` maps a
- * dB delta onto (03_EXTENSIONS_SPEC §3(b)): the parameter's internal `min`, `max`,
+ * dB delta onto: the parameter's internal `min`, `max`,
  * and `defaultValue` (its unity point). A structural subset of
  * {@link DeviceParamInfo}, so a handler can pass the volume param straight in.
  */
@@ -495,12 +493,12 @@ export interface MixerParam {
   readonly defaultValue: number;
 }
 
-// --- Session-to-Song Builder (W5), 03_EXTENSIONS_SPEC §4 ---
+// --- Session-to-Song Builder ---
 
 /**
  * A musical time signature. The Set has no Set-level time signature in the SDK; it
  * lives on the {@link SceneDTO}, so `planArrangement` takes one explicitly and
- * defaults callers to 4/4 (03_EXTENSIONS_SPEC §4(b)/§4(d)).
+ * defaults callers to 4/4 when no scene-specific value is available.
  */
 export interface TimeSig {
   /** Beats per bar (the numerator). */
@@ -512,12 +510,11 @@ export interface TimeSig {
 /**
  * One Session clip as `planArrangement` sees it: handle-free, the source for a
  * recreated Arrangement clip. MIDI clips carry their `notes`; audio clips carry a
- * `filePath`. `clipRef` is the stable id of the source clip, echoed onto the
+ * `filePath`. `clipRef` is the opaque reference of the source clip, echoed onto the
  * resulting {@link Placement.sourceClipRef} so the handler knows which clip to copy.
- * 03_EXTENSIONS_SPEC §4(b).
  */
 export interface SessionClipDTO {
-  /** Stable id of the source Session clip. */
+  /** Opaque reference of the source Session clip. */
   readonly clipRef: ClipId;
   /** Index of the owning track within {@link SessionDTO.tracks}. */
   readonly trackIndex: number;
@@ -541,7 +538,7 @@ export interface SessionClipDTO {
   readonly filePath?: string;
 }
 
-/** One Session scene as `planArrangement` sees it (handle-free). §4(b). */
+/** One Session scene as `planArrangement` sees it (handle-free). */
 export interface SceneDTO {
   /** Index of this scene within {@link SessionDTO.scenes}. */
   readonly index: number;
@@ -549,14 +546,14 @@ export interface SceneDTO {
   /**
    * The scene's time signature, when it overrides the Set; omitted when the scene
    * does not report one (the caller then falls back to the `planArrangement`
-   * `timeSig` argument). 01_SDK_MAP §2 (`Scene.signatureNumerator/Denominator`).
+   * `timeSig` argument). Mirrors `Scene.signatureNumerator/Denominator`.
    */
   readonly timeSig?: TimeSig;
 }
 
 /**
- * The whole Session as plain data, the input to `planArrangement`
- * (03_EXTENSIONS_SPEC §4(b)). Tracks are named/typed so a {@link Placement} can name
+ * The whole Session as plain data, the input to `planArrangement`. Tracks are
+ * named/typed so a {@link Placement} can name
  * the lane; clips are flat and each tags its owning track + scene so the planner can
  * find "every track that has a clip in the mapped scene".
  */
@@ -568,8 +565,8 @@ export interface SessionDTO {
 
 /**
  * One row of the user's section map: a named song section, the Session scene it is
- * built from, and its length in bars (03_EXTENSIONS_SPEC §4(c), e.g. "Intro 8,
- * Verse 16"). An optional color tints every clip placed for the section.
+ * built from, and its length in bars (for example, "Intro 8, Verse 16"). An optional
+ * color tints every clip placed for the section.
  */
 export interface Section {
   readonly name: string;
@@ -601,8 +598,8 @@ export interface ResolvedSection {
 }
 
 /**
- * One clip `planArrangement` decides to write onto the Arrangement timeline
- * (03_EXTENSIONS_SPEC §4(b)). The handler turns each into a create-then-populate on
+ * One clip `planArrangement` decides to write onto the Arrangement timeline. The
+ * handler turns each into a create-then-populate on
  * the target track: `createArrangementMidiClip` / `createArrangementAudioClip` at
  * `startBeat` for `durationBeats`, then name + color from this DTO, copying the
  * source clip identified by `sourceClipRef`.
@@ -616,7 +613,7 @@ export interface Placement {
   readonly durationBeats: number;
   /** Clip-local source beat that becomes beat zero in this physical Arrangement clip. */
   readonly sourceStartBeat: number;
-  /** Stable id of the source Session clip to copy (notes for MIDI, file for audio). */
+  /** Opaque reference of the source Session clip to copy (notes for MIDI, file for audio). */
   readonly sourceClipRef: ClipId;
   /** Name to set on the placed clip. */
   readonly name: string;
@@ -625,22 +622,21 @@ export interface Placement {
 }
 
 /**
- * Output of `planArrangement` (03_EXTENSIONS_SPEC §0/§4(b)): the clips to place and
- * the section-boundary cue points to create. Both are plain data the handler then
- * writes inside one transaction.
+ * Output of `planArrangement`: the clips to place and the section-boundary cue points
+ * to create. Both are plain data the handler then writes through the bridge.
  */
 export interface PlanResult {
   readonly placements: readonly Placement[];
   readonly cuePoints: readonly { readonly beat: number; readonly name: string }[];
 }
 
-// --- Set Janitor (W6), 03_EXTENSIONS_SPEC §5 ---
+// --- Set Janitor ---
 
 /**
  * One track as `detectIssues` sees it (handle-free). Carries just what the rules
- * need: the stable id (so a {@link Fix} can target it), the name (placeholder-name
- * rule), whether it has any device (empty-track rule also checks clips), and its
- * clips. 03_EXTENSIONS_SPEC §5(b).
+ * need: an opaque reference (so a {@link Fix} can target it), the name
+ * (placeholder-name rule), whether it has any device (empty-track rule also checks
+ * clips), and its clips.
  */
 export interface SetTrackDTO {
   readonly id: TrackId;
@@ -652,8 +648,8 @@ export interface SetTrackDTO {
 }
 
 /**
- * One clip as `detectIssues` sees it (handle-free). 03_EXTENSIONS_SPEC §5(b): name
- * (placeholder rule), color (off-palette rule), and the loop geometry the loop-
+ * One clip as `detectIssues` sees it (handle-free): name (placeholder rule), color
+ * (off-palette rule), and the loop geometry the loop-
  * overrun rule compares (`endMarker > loopEnd`).
  */
 export interface SetClipDTO {
@@ -671,25 +667,25 @@ export interface SetClipDTO {
 }
 
 /**
- * The whole Set as plain data, the input to `detectIssues` (03_EXTENSIONS_SPEC
- * §5(b)). A flat track list, each track carrying its clips.
+ * The whole Set as plain data, the input to `detectIssues`: a flat track list, each
+ * track carrying its clips.
  */
 export interface SetDTO {
   readonly tracks: readonly SetTrackDTO[];
 }
 
-/** The kinds of mess {@link Issue} flags. 03_EXTENSIONS_SPEC §5(a)/§5(b). */
+/** The kinds of Set hygiene problem {@link Issue} flags. */
 export type IssueKind = 'emptyTrack' | 'placeholderName' | 'offPaletteColor' | 'loopOverrun';
 
 /**
- * A stable id for one detected {@link Issue}, used to mark which issues the user
- * chose to fix when calling `planFixes(issues, chosen)`. 03_EXTENSIONS_SPEC §0/§5(b).
+ * A deterministic identifier for one detected {@link Issue}, used to mark which
+ * issues the user chose to fix when calling `planFixes(issues, chosen)`.
  */
 export type IssueId = string;
 
 /**
- * One problem `detectIssues` found (03_EXTENSIONS_SPEC §5(b)). `target` is the
- * handle-free reference of the offending track or clip.
+ * One problem `detectIssues` found. `target` is the handle-free reference of the
+ * offending track or clip.
  * `detail` is a short human description for the checklist UI.
  */
 export interface Issue {
@@ -705,15 +701,15 @@ export interface Issue {
   readonly detail: string;
 }
 
-/** The kinds of repair {@link Fix} describes. 03_EXTENSIONS_SPEC §5(b). */
+/** The kinds of repair {@link Fix} describes. */
 export type FixKind = 'rename' | 'recolor' | 'deleteTrack' | 'deleteClip';
 
 /**
- * One repair `planFixes` emits for a chosen {@link Issue} (03_EXTENSIONS_SPEC §5(b)).
- * `target` is the object to change (a track or clip path id). `value` carries the new
+ * One repair `planFixes` emits for a chosen {@link Issue}. `target` is the opaque
+ * reference of the track or clip to change. `value` carries the new
  * name (`rename`) or color (`recolor`) and is absent for the destructive `deleteTrack`
  * / `deleteClip` kinds. The handler does the sync edits (`rename`/`recolor`) inline
- * and batches the async deletes, all in one transaction (§5(b)).
+ * and batches the async deletes, all in one transaction.
  */
 export interface Fix {
   readonly kind: FixKind;

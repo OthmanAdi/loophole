@@ -2,7 +2,7 @@
  * Transport bootstrap for the in-process Loophole Bridge: port probing, the bearer
  * token + Origin allow list, the `bridge.json` discovery file, and the request
  * gates the `node:http` listener applies before handing a request to the MCP
- * transport (02_BRIDGE_SPEC §1.3 + §2; ARCHITECTURE_DECISIONS §4).
+ * transport.
  *
  * This module imports `node:` built-ins (`crypto`, `fs`, `path`, and the `http`
  * `Server` type) and the core error helpers, but NOT `@ableton-extensions/sdk`: it is
@@ -12,10 +12,10 @@
  * CI-excluded typecheck lane. The `storageDirectory` it is handed comes from the SDK's
  * {@link Environment.storageDirectory}, which is the one SDK-derived input.
  *
- * RING-3 PENDING (no Ableton here; none of this is Live-proven): the loopback bind on
- * a real host, the Origin/bearer rejection on a real MCP client, and the round-trip of
- * `bridge.json` through the W7 `/setup` skill are verified only by the manual
- * `E2E_CHECKLIST.md`. The shapes and the Node calls are typed against `@types/node`.
+ * Ableton runtime verification is NOT_RUN here: the loopback bind on a real host, the
+ * Origin/bearer rejection on a real MCP client, and the `bridge.json` round-trip
+ * through `/setup` remain manual checks in `E2E_CHECKLIST.md`. The shapes and Node
+ * calls are typed against `@types/node`.
  */
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
@@ -24,13 +24,13 @@ import { join } from 'node:path';
 import type { IncomingMessage, Server } from 'node:http';
 import { sdkRejected } from '@othmanadi/loophole-core';
 
-/** The loopback host the bridge always binds (never `0.0.0.0`; 02_BRIDGE_SPEC §2). */
+/** The loopback host the bridge always binds; it never exposes `0.0.0.0`. */
 export const LOOPBACK_HOST = '127.0.0.1';
 
-/** The MCP endpoint path every request must hit (02_BRIDGE_SPEC §1.3). */
+/** The MCP endpoint path every request must hit. */
 export const MCP_PATH = '/mcp';
 
-/** First port of the probe range (02_BRIDGE_SPEC §1.2 / §1.3: `8420..8429`). */
+/** First port of the bounded `8420..8429` probe range. */
 export const PORT_RANGE_START = 8420;
 
 /** Last port of the probe range (inclusive). */
@@ -46,10 +46,9 @@ const TOKEN_PATTERN = /^[0-9a-f]{64}$/u;
 export const BRIDGE_JSON_FILE = 'bridge.json';
 
 /**
- * The exact `bridge.json` shape the W7 `/setup` skill reads (ARCHITECTURE_DECISIONS
- * §4, the richer shape, NOT the bare `{ port, token }`). `transport` is always
- * `"http"` and `url` is pre-composed so `/setup` can emit the client config with zero
- * guessing.
+ * The exact `bridge.json` shape the `/setup` skill reads. This is the richer discovery
+ * shape, not the bare `{ port, token }`: `transport` is always `"http"` and `url` is
+ * pre-composed so `/setup` can emit the client config with zero guessing.
  */
 export interface BridgeJson {
   /** The loopback port the listener bound (one of {@link PORT_RANGE_START}..{@link PORT_RANGE_END}). */
@@ -67,7 +66,7 @@ export interface AuthState {
   /** The bearer token (read from / freshly written to `bridge.json`). */
   readonly token: string;
   /**
-   * Web origins explicitly allowed. Empty by default (02_BRIDGE_SPEC §2): native MCP
+   * Web origins explicitly allowed. Empty by default: native MCP
    * clients send no `Origin` and pass; any browser `Origin` is rejected unless listed.
    */
   readonly allowedOrigins: readonly string[];
@@ -211,8 +210,8 @@ function closeHttpServer(server: Server): Promise<void> {
 /**
  * Read the bearer token from an existing `bridge.json` in `storageDirectory`, or mint a
  * fresh one (32 bytes, lowercase hex) on first run. The human pastes the token into their
- * client config once; reusing it across sessions keeps that config stable
- * (02_BRIDGE_SPEC §2). The Origin allow list is empty by default (native clients pass,
+ * client config once; reusing it across sessions keeps that config stable.
+ * The Origin allow list is empty by default (native clients pass,
  * web origins are rejected).
  *
  * @param storageDirectory the SDK's per-extension {@link Environment.storageDirectory}.
@@ -263,7 +262,7 @@ function tryReadToken(storageDirectory: string): string | null {
 
 /**
  * Write the `bridge.json` discovery file into `storageDirectory` with the full shape
- * the `/setup` skill consumes (ARCHITECTURE_DECISIONS §4). Creates the directory if it
+ * the `/setup` skill consumes. Creates the directory if it
  * does not exist. Returns the written object so the caller can log the chosen port.
  *
  * @param storageDirectory the SDK's per-extension `storageDirectory`.
@@ -327,7 +326,7 @@ function bestEffortPrivateMode(path: string, mode: number): void {
 }
 
 /**
- * The Origin gate (02_BRIDGE_SPEC §2, the DNS-rebinding guard). A request with NO
+ * The Origin gate, which protects against DNS rebinding. A request with NO
  * `Origin` header passes (native MCP clients send none). An opaque `null` origin is
  * rejected because it cannot identify its caller. A concrete loopback origin passes;
  * any other web origin must be on `allowedOrigins` or it is rejected (the listener
@@ -396,7 +395,7 @@ export function checkHost(req: IncomingMessage, port: number): boolean {
 }
 
 /**
- * The bearer gate (02_BRIDGE_SPEC §2). The request must carry
+ * The bearer gate. The request must carry
  * `Authorization: Bearer <token>` exactly matching `token`, or the listener returns
  * 401. Runs AFTER {@link checkOrigin} and BEFORE `transport.handleRequest`. The token
  * is never echoed anywhere the model can see it.

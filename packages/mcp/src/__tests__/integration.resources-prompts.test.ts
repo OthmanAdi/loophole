@@ -1,6 +1,5 @@
 /**
- * Ring 2 (integration) — read-only Resources and recipe Prompts over the MCP wire
- * (02_BRIDGE_SPEC §6).
+ * Integration coverage for read-only resources and recipe prompts over the MCP wire.
  *
  * Resources mirror the read tools and return JSON (names + opaque references, never a
  * handle), capped at the character limit. `ableton://song` is a fixed resource;
@@ -29,7 +28,7 @@ function resourceJson(result: { contents: readonly { text?: string }[] }): unkno
   return JSON.parse(text);
 }
 
-describe('ring 2: resources over MCP', () => {
+describe('resources over MCP', () => {
   let conn: Connected;
   let live: FakeLiveBridge;
   let vocalsTrack: TrackReference;
@@ -148,7 +147,7 @@ describe('ring 2: resources over MCP', () => {
   });
 });
 
-describe('ring 2: prompts over MCP', () => {
+describe('prompts over MCP', () => {
   let conn: Connected;
   let live: FakeLiveBridge;
 

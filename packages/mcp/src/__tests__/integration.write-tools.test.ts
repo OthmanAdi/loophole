@@ -1,6 +1,6 @@
 /**
- * Ring 2 (integration) — the eight WRITE tools over the MCP wire, the highest-value
- * ring (02_BRIDGE_SPEC §8). For each write tool, three claims:
+ * Integration coverage for the eight WRITE tools over the MCP wire. For each
+ * write tool, three claims:
  *  1. the MCP response is a clean success with the documented structured payload;
  *  2. the resulting `FakeLiveBridge` STATE changed as expected (real state, not
  *     just the echoed response);
@@ -27,7 +27,7 @@ import { FakeLiveBridge } from '@othmanadi/loophole-core';
 
 import { assertNoForbiddenShapes, callTool, connect, type Connected } from './harness.js';
 
-describe('ring 2: write tools over MCP (response + state + one undo)', () => {
+describe('write tools over MCP (response + state + one undo)', () => {
   let live: FakeLiveBridge;
   let conn: Connected;
   let drumsTrack: TrackReference;

@@ -1,10 +1,10 @@
 /**
  * Pure music transforms over {@link NoteDTO}[].
  *
- * These functions have no I/O and touch neither the bridge nor the SDK. They are
- * the cheapest, fastest test ring (ring 1) and they encode the SDK's read-map-assign
- * contract: each returns a new array of new note objects and never mutates its
- * input, exactly how `MidiClip.notes` must be rewritten.
+ * These functions have no I/O and touch neither the bridge nor the SDK, so unit tests
+ * can exercise them without an Ableton install. They encode the SDK's read-map-assign
+ * contract: each returns a new array of new note objects and never mutates its input,
+ * exactly how `MidiClip.notes` must be rewritten.
  */
 
 import type { NoteDTO } from '../dtos.js';
@@ -143,8 +143,8 @@ export function transposeNotes(notes: readonly NoteDTO[], semitones: number): No
  * Deterministic and pure. With no `rng` it returns a structural copy unchanged (so
  * the read-map-assign contract is exercised without nondeterminism in tests). With
  * an injected `rng` in [0, 1) it offsets each start time within +/- `amountBeats`,
- * clamped at 0 so no note starts before the clip. The richer groove model (velocity,
- * probability, swing) lands in the Humanize extension wave.
+ * clamped at 0 so no note starts before the clip. The Humanize transform adds the
+ * richer groove model for velocity, probability, and swing.
  */
 export function humanizeTiming(
   notes: readonly NoteDTO[],

@@ -20,7 +20,7 @@
  *     `listTracks`, `findTrack`, `listClips`, `getNotes`, `listScenes`). They return a
  *     snapshot, never a Promise. The two exceptions are `listDeviceParams` and
  *     `getTrackMixer`: a parameter's live value comes from `DeviceParameter.getValue()`,
- *     the one ASYNC getter in the SDK (01_SDK_MAP §2), so these reads return a Promise.
+ *     the only asynchronous getter used by this port, so these reads return a Promise.
  *     They are still pure reads: they open no transaction and add no undo step.
  *  2. Mutations are ASYNC and return Promises (`setTempo`, `setTrackProps`,
  *     `setNotes`, `setClipProps`, `createTrack`, `createMidiClip`,
@@ -59,7 +59,7 @@ export interface LiveBridge {
 
   /**
    * Snapshot of the Set: tempo, scale, grid, object counts, and a flat list of
-   * tracks with ids. A summary, not a full dump; drill down with the list/read
+   * tracks with opaque references. A summary, not a full dump; drill down with the list/read
    * methods. Backs `live_get_song_overview`.
    */
   getSongOverview(): SongOverview;
@@ -72,8 +72,8 @@ export interface LiveBridge {
   listTracks(): readonly TrackInfo[];
 
   /**
-   * Resolve a human track reference (name or substring, case-insensitive) to the
-   * stable track ids that match, each as `{ name, id, type }`. Returns an empty
+   * Resolve a human track query (name or substring, case-insensitive) to the
+   * matching opaque track references, each as `{ name, id, type }`. Returns an empty
    * array when nothing matches; does not throw on no match (an empty result is a
    * valid answer). Backs `live_find_track`.
    */
@@ -98,17 +98,17 @@ export interface LiveBridge {
    * `live_get_notes`.
    *
    * @throws BridgeError `STALE_REFERENCE` if the clip is gone, `WRONG_TYPE` if the
-   *   id is not a MIDI clip.
+   *   reference is not a MIDI clip.
    */
   getNotes(clipId: ClipId): readonly NoteDTO[];
 
   /**
-   * Every device parameter on a track, each as a {@link DeviceParamInfo} carrying a
-   * stable {@link ParamId}, so the model can obtain a parameter id to pass to
+   * Every device parameter on a track, each as a {@link DeviceParamInfo} carrying an
+   * opaque {@link ParamId}, so the model can obtain a parameter reference to pass to
    * {@link LiveBridge.setParam}. Backs the `ableton://track/{i}` resource.
    *
    * ASYNC because each parameter's `value` is read with `DeviceParameter.getValue()`,
-   * the one async getter in the SDK (01_SDK_MAP §2), so the real adapter returns the
+   * the only asynchronous getter used by this port, so the real adapter returns the
    * live value rather than a placeholder. It is still a pure read: it opens NO
    * transaction and adds NO undo step.
    *
@@ -119,8 +119,8 @@ export interface LiveBridge {
 
   /**
    * Every scene in the Set, in scene order, each as a {@link SceneInfo} carrying its
-   * stable {@link import("./ids.js").SceneId}, name, and (read-only) tempo / time
-   * signature. Mirrors `Song.scenes`. Session-to-Song (W5) reads this so the user can
+   * opaque {@link import("./ids.js").SceneId}, name, and (read-only) tempo / time
+   * signature. Mirrors `Song.scenes`. Session-to-Song reads this so the user can
    * map each scene to a song section.
    */
   listScenes(): readonly SceneInfo[];
@@ -129,11 +129,11 @@ export interface LiveBridge {
    * The mixer of a track, exposing its volume as an addressable
    * {@link DeviceParamInfo} (with `min` / `max` / `defaultValue` / `value`). Mirrors
    * `Track.mixer.volume`, a `DeviceParameter`. ASYNC because the volume's live `value`
-   * comes from `DeviceParameter.getValue()`, the one async getter in the SDK
-   * (01_SDK_MAP §2), so the real adapter returns the live value rather than a
+   * comes from `DeviceParameter.getValue()`, the only asynchronous getter used by
+   * this port, so the real adapter returns the live value rather than a
    * placeholder. It is still a pure read: it opens NO transaction and adds NO undo
    * step. The returned `volume.id` is a writable {@link ParamId}, so Gain Stage Doctor
-   * (W3) computes a trim and commits it through {@link LiveBridge.setParam} (the
+   * computes a trim and commits it through {@link LiveBridge.setParam} (the
    * existing one-undo write path) without any new mutation method.
    *
    * @throws BridgeError `STALE_REFERENCE` if `trackId` is unknown/deleted,

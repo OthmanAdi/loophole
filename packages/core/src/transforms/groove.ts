@@ -1,11 +1,11 @@
 /**
- * Pure groove transform for Humanize / Groove Sculptor (W2), 03_EXTENSIONS_SPEC §2.
+ * Pure groove transform for Humanize / Groove Sculptor.
  *
  * `humanize` takes stiff, perfectly-quantised MIDI and breathes life into it: it
  * nudges each note's `startTime`, `velocity`, and optionally `duration` by small
  * controlled random amounts, with an optional swing on off-beat positions. Like every
  * transform in this package it has no I/O and touches neither the bridge nor the SDK,
- * so it is the cheapest test ring (ring 1) and asserts exact output.
+ * so unit tests can assert exact output without an Ableton install.
  *
  * Determinism is the whole point of the injected `rng`. The richer groove model wants
  * randomness, but a test must be able to assert an exact output array, so the caller
@@ -141,7 +141,7 @@ function isOffBeat(startTime: number, beatsPerCell: number): boolean {
  * Scaling: a draw `rng()` in `[0, 1)` becomes a bipolar factor `rng() * 2 - 1` in
  * `[-1, 1)`. Timing offset is that factor times `grid.beatsPerCell * strength`, so at
  * `strength` 1 a note can move up to a full grid cell either way, and at `strength`
- * 0.5 up to half a cell ("up to ± half a grid cell", §2(b)). `startTime` is clamped at
+ * 0.5 up to half a cell ("up to ± half a grid cell"). `startTime` is clamped at
  * 0 so no note starts before the clip. Velocity moves by the bipolar factor times
  * `strength * 64` (roughly half the velocity range at full strength) around the note's
  * own velocity (or {@link DEFAULT_VELOCITY} when it has none), then clamps to 1..127.
@@ -154,7 +154,7 @@ function isOffBeat(startTime: number, beatsPerCell: number): boolean {
  * control in the UI), but like every axis it vanishes at `strength` 0 via the early
  * return below.
  *
- * `strength` 0 is an exact identity transform (a structural copy, §2(f)): the early
+ * `strength` 0 is an exact identity transform (a structural copy): the early
  * return makes that hold no matter which gates or swing/living options are set.
  *
  * @param notes the clip notes to humanise (never mutated)
@@ -229,8 +229,8 @@ export function humanize(
       out.startTime = 0;
     }
 
-    // Living pattern: write probability / velocityDeviation for a less mechanical feel
-    // (§2(b)). Deterministic and scaled by strength so a fixed seed stays assertable.
+    // Living pattern: write probability / velocityDeviation for a less mechanical
+    // feel. Deterministic and scaled by strength so a fixed seed stays assertable.
     if (opts.living === true) {
       const probDraw = drawRng(rng);
       // Keep probability high (notes still mostly play): 1 down to ~0.7 at full strength.

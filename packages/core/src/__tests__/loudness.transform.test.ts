@@ -1,14 +1,13 @@
 /**
- * Ring 1 unit tests for the pure loudness math (Gain Stage Doctor, W3,
- * 03_EXTENSIONS_SPEC §3(f)). No bridge, no I/O, no audio file: synthetic
- * Float32Arrays with hand-checked dB answers.
+ * Unit tests for the pure loudness math used by Gain Stage Doctor. No bridge, no I/O,
+ * no audio file: synthetic Float32Arrays with hand-checked dB answers.
  *
  * References used below:
  *  - a full-scale sine (amplitude 1.0) peaks at 0 dBFS and is 20·log10(1/√2)
  *    = −3.0103 dBFS RMS, a 3.0103 dB crest;
- *  - silence and DC are the two guarded edge cases (§3(f)): silence floors to a finite
+ *  - silence and DC are the two guarded edge cases: silence floors to a finite
  *    value with a 0 dB crest, DC has peak == rms so a 0 dB crest;
- *  - suggestTrimDb(−9, −18) === −9 is the worked example from §3(b);
+ *  - suggestTrimDb(−9, −18) === −9 is the representative trim calculation;
  *  - dbToParamValue must be monotonic and map 0 dB to the parameter's defaultValue.
  */
 
@@ -130,7 +129,7 @@ describe('loudness numeric safety', () => {
 });
 
 describe('suggestTrimDb: targetDb - rmsDb', () => {
-  it('matches the spec worked example: suggestTrimDb(-9, -18) === -9', () => {
+  it('calculates suggestTrimDb(-9, -18) === -9', () => {
     expect(suggestTrimDb(-9, -18)).toBe(-9);
   });
 

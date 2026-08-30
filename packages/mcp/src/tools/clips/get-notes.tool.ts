@@ -4,7 +4,7 @@
  * Read the MIDI content of one clip so the model can reason about or transform
  * it. For a clip whose note dump would blow the character cap, the tool returns a
  * summary (count, pitch range, beat span, first N notes) plus a narrowing hint,
- * rather than a silent partial dump (02_BRIDGE_SPEC §5 tool 4, §8).
+ * rather than a silent partial dump.
  */
 
 import { z } from 'zod';

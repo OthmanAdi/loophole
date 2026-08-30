@@ -1,5 +1,5 @@
 /**
- * The three read-only Resources (02_BRIDGE_SPEC §6.1).
+ * The three read-only MCP resources.
  *
  * Resources give the model cheap, browsable read context without spending a tool
  * call and without enlarging the tool list. All are read-only, all return JSON

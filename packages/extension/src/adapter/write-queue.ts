@@ -4,9 +4,9 @@
  *
  * The Extension Host is single-threaded JavaScript, but MCP requests arrive
  * concurrently and each mutation is asynchronous under the hood (the SDK's
- * structural ops resolve a callback into a Promise; see 01_SDK_MAP §0 Rule A). Two
- * writes whose `await`s interleave could corrupt undo grouping or race on the tree
- * structure, so 02_BRIDGE_SPEC §4 mandates one FIFO queue: a write fully completes
+ * structural operations resolve a callback into a Promise). Two writes whose `await`s
+ * interleave could corrupt undo grouping or race on the tree structure, so one FIFO
+ * queue ensures that a write fully completes
  * (its Promise settles) before the next starts. That ordering is what makes "one
  * tool call = one `withinTransaction` = one undo" hold deterministically.
  *
@@ -14,7 +14,7 @@
  * Promise plumbing, so it stays trivially correct and unit-testable. The adapter
  * owns one instance and routes every mutation through {@link WriteQueue.run}; reads
  * bypass the queue entirely (sync getters cannot interleave with themselves, and
- * queueing them would only add latency, per §4).
+ * queueing them would only add latency).
  */
 
 import { sdkRejected } from '@othmanadi/loophole-core';
@@ -23,8 +23,8 @@ import { sdkRejected } from '@othmanadi/loophole-core';
  * The default cap on pending (queued but not yet started) tasks. Past this, {@link
  * WriteQueue.run} rejects with a `SDK_REJECTED` "bridge busy" error so a flood of
  * concurrent writes makes the model back off and retry rather than the host
- * ballooning memory (02_BRIDGE_SPEC §4 "Backpressure"). 64 is the value the spec
- * names; it is generous for an interactive MCP session yet bounded.
+ * ballooning memory. A limit of 64 is generous for an interactive MCP session yet
+ * bounded.
  */
 export const DEFAULT_MAX_PENDING = 64;
 

@@ -3,8 +3,7 @@
  *
  * Rename / mute / solo / arm a track, batching all provided properties into ONE
  * undo step. Only the keys present are written. At least one property must be
- * given (an empty patch is a clean `BAD_INPUT` via `.refine`)
- * (02_BRIDGE_SPEC §5 tool 6).
+ * given (an empty patch is a clean `BAD_INPUT` via `.refine`).
  */
 
 import { z } from 'zod';

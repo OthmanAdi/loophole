@@ -1,6 +1,6 @@
 /**
- * Ring 2 tests for the Humanize command handler against the FakeLiveBridge, with no
- * Ableton install. They pin the §2(f) ring-2 claims: a fixed-seed rng over a seeded
+ * Command-handler tests for Humanize against the FakeLiveBridge, with no Ableton
+ * install. They pin the host-independent contract: a fixed-seed rng over a seeded
  * clip produces an exact stored-notes array, and the whole pass is exactly ONE undo
  * step (`transactionCount` grows by one). Stale / wrong-type ids propagate the typed
  * error and roll the transaction back.
@@ -33,7 +33,7 @@ function clipIdAt(bridge: FakeLiveBridge, trackIndex: number, clipIndex: number)
   return clip.id;
 }
 
-/** The three-note clip the headline ring-2 test seeds and humanises. */
+/** The three-note clip the headline command-handler test seeds and humanises. */
 const SEED_NOTES: readonly NoteDTO[] = [
   { pitch: 60, startTime: 0, duration: 1, velocity: 100 },
   { pitch: 64, startTime: 1, duration: 1, velocity: 90 },

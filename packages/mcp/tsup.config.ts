@@ -6,8 +6,7 @@ import { defineConfig } from 'tsup';
  * Two entries:
  *  - `src/index.ts`  — the public library surface (`buildServer`, `LiveBridge`, `VERSION`).
  *  - `src/cifake.ts` — a runnable stdio entry that wires `buildServer(new FakeLiveBridge())`
- *    so the MCP Inspector CLI can run a protocol contract check with no Ableton present
- *    (02_BRIDGE_SPEC §8).
+ *    so the MCP Inspector CLI can run a protocol contract check with no Ableton present.
  *
  * `noExternal: ['@othmanadi/loophole-core']` forces the workspace `core` package to be
  * inlined into the published bundle (tsup externalizes workspace deps by default), so the

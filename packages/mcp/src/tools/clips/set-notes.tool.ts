@@ -4,7 +4,7 @@
  * Replace all MIDI notes in a clip (the read-map-assign-back contract); the
  * workhorse behind humanize, quantize, and write-a-melody. One queued
  * transaction = one undo. The bridge clamps pitch/velocity to 0..127 as a
- * backstop, the way Live rejects out-of-range writes (02_BRIDGE_SPEC §5 tool 7).
+ * backstop, the way Live rejects out-of-range writes.
  */
 
 import { z } from 'zod';

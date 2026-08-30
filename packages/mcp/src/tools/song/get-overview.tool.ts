@@ -3,8 +3,7 @@
  *
  * One cheap orientation snapshot of the Set: tempo, scale, grid, object counts,
  * and the track list with opaque references. The first call in almost every session; the model
- * drills down with the other read tools rather than dumping the whole Set
- * (02_BRIDGE_SPEC §5, tool 1).
+ * drills down with the other read tools rather than dumping the whole Set.
  */
 
 import { z } from 'zod';

@@ -2,7 +2,7 @@
  * Character-cap helper for tool and resource text payloads.
  *
  * Every text body the bridge returns is capped at `CHARACTER_LIMIT` characters
- * (02_BRIDGE_SPEC §8) so a large Set cannot flood the model's context. When a
+ * so a large Set cannot flood the model's context. When a
  * body overflows, the bridge says so and tells the model how to narrow the read
  * (a `trackId`, a beat range, `live_find_track`) rather than silently returning
  * a partial dump.

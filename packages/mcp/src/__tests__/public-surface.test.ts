@@ -1,5 +1,5 @@
 /**
- * Ring 2 (integration) — the published package surface (`src/index.ts`).
+ * Integration coverage for the published package surface (`src/index.ts`).
  *
  * `@othmanadi/ableton-mcp` exposes exactly `buildServer`, `VERSION`, and the
  * `LiveBridge` type re-export. A consumer (the extension shell, a standalone host)
@@ -15,7 +15,7 @@ import { FakeLiveBridge } from '@othmanadi/loophole-core';
 
 import { buildServer, VERSION } from '../index.js';
 
-describe('ring 2: public package surface (index.ts)', () => {
+describe('public package surface (index.ts)', () => {
   it('exports a VERSION string', () => {
     expect(typeof VERSION).toBe('string');
     expect(VERSION.length).toBeGreaterThan(0);

@@ -1,5 +1,5 @@
 /**
- * Ring 1 (unit) — the result helpers and the character cap (02_BRIDGE_SPEC §7, §8).
+ * Unit coverage for the result helpers and the character cap.
  *
  * Covers:
  *  - `truncate` exactly at the `CHARACTER_LIMIT = 25_000` boundary: a body at or
@@ -19,7 +19,7 @@ import { truncate } from '../result/truncate.js';
 import { ok, err } from '../result/ok.js';
 import { CHARACTER_LIMIT } from '../config/config.js';
 
-describe('ring 1: truncate at the 25k boundary', () => {
+describe('truncate at the 25k boundary', () => {
   it('exposes the documented 25_000 character limit', () => {
     expect(CHARACTER_LIMIT).toBe(25_000);
   });
@@ -69,7 +69,7 @@ describe('ring 1: truncate at the 25k boundary', () => {
   });
 });
 
-describe('ring 1: ok() shapes a success result', () => {
+describe('ok() shapes a success result', () => {
   it('uses the summary as text and the object payload as structuredContent', () => {
     const result = ok({ tempo: 120 }, 'Tempo set to 120 BPM.');
     expect(result.isError).toBeUndefined();
@@ -205,7 +205,7 @@ describe('ring 1: ok() shapes a success result', () => {
   });
 });
 
-describe('ring 1: err() shapes an error result', () => {
+describe('err() shapes an error result', () => {
   it('returns isError true with just the message when no hint or code', () => {
     const result = err('Something failed.');
     expect(result.isError).toBe(true);

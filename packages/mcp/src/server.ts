@@ -2,12 +2,12 @@
  * `buildServer(bridge)`: construct the Loophole Bridge MCP server, transport-agnostic.
  *
  * This is the ONLY module outside `tools` / `resources` / `prompts` that imports
- * the MCP SDK (02_BRIDGE_SPEC §9). It builds an `McpServer`, registers all 12
+ * the MCP SDK. It builds an `McpServer`, registers all 12
  * tools through the registry (which applies `safeHandle`), then the read-only
  * resources and the recipe prompts. It does NOT create a transport, open a
  * socket, or import `node:http`: the extension shell constructs the transport and
- * calls `server.connect(...)` in a later wave, and tests connect an
- * `InMemoryTransport` to the same server (02_BRIDGE_SPEC §1.3, §8).
+ * calls `server.connect(...)`, while tests connect an `InMemoryTransport` to the
+ * same server.
  *
  * Because the server is built purely from the `LiveBridge` port, the exact same
  * server code runs against `FakeLiveBridge` in CI and against the real

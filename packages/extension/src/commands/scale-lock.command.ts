@@ -1,5 +1,5 @@
 /**
- * Scale Lock (W1) context-menu command, 03_EXTENSIONS_SPEC §1(c).
+ * Scale Lock context-menu command.
  *
  * Registers `"Lock to Scale…"` on the `"MidiClip"` and `"ClipSlotSelection"` scopes,
  * shows the Scale Lock modal pre-filled with the Set's live scale and a dry off-scale
@@ -9,15 +9,15 @@
  *
  * The dry count is computed without mutating anything: read the scale + each target
  * clip's notes through the bridge, run the exported pure {@link snapToScale}, and sum
- * `movedCount`. This is the "after a dry pass a count line" the spec asks for, done with
- * the same transform the handler uses, so the preview cannot drift from the result.
+ * `movedCount`. The preview uses the same transform as the handler, so it cannot drift
+ * from the result.
  *
  * SDK-facing (imports the adapter selection helpers + the SDK context type), so it is
  * CI-excluded and typechecked locally via `tsconfig.live.json`.
  *
- * RING-3 PENDING: the scope's argument shape, the modal round-trip, and the one-undo
- * grouping are confirmed only in real Live; the resolve + transform logic is the same
- * code ring 2 exercises against `FakeLiveBridge`.
+ * Ableton runtime verification is NOT_RUN here: the scope argument shape, modal
+ * round-trip, and undo grouping remain checks in the manual E2E checklist. The resolve
+ * and transform logic is covered against `FakeLiveBridge`.
  */
 
 import type { ClipSlotSelection, ExtensionContext, Handle } from '@ableton-extensions/sdk';
@@ -38,7 +38,7 @@ import { runCommand } from './support.js';
 /** The command id Live invokes; also the context-menu action's target. */
 const COMMAND_ID = 'loophole.scalelock.run';
 
-/** The context-menu label (03_EXTENSIONS_SPEC §1(c)). */
+/** The context-menu label shown for supported MIDI clip scopes. */
 const LABEL = 'Lock to Scale…';
 
 /** The modal dialog size (close to the example's 320×220). */

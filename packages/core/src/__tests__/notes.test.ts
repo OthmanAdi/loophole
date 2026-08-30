@@ -1,5 +1,5 @@
 /**
- * Ring 1 unit tests for the pure note transforms. No bridge, no I/O.
+ * Unit tests for the pure note transforms. No bridge, no I/O.
  */
 
 import { describe, expect, it } from 'vitest';

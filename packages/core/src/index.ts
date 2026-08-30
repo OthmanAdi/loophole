@@ -3,7 +3,7 @@
  * Bridge (`packages/mcp`) and the Loophole Kit extensions (`packages/extension`).
  *
  * It ships the code seam only: the `LiveBridge` port, its in-memory
- * `FakeLiveBridge`, the serializable DTOs, the stable path-id scheme, the typed
+ * `FakeLiveBridge`, the serializable DTOs, opaque session references, the typed
  * error model, and the pure note transforms. It imports NEITHER
  * `@modelcontextprotocol/sdk` NOR `@ableton-extensions/sdk`: the MCP server lives in
  * the bridge, and the one SDK-touching adapter lives in the extension. This package
@@ -42,9 +42,8 @@ export type {
   TrackRef,
 } from './dtos.js';
 
-// Transform input/output types (Wave B, stage 2): the shapes the five pure
-// transforms consume and produce. Defined in core so stage-2 agents implement only
-// functions and never edit a shared file.
+// Transform input/output types: the serializable shapes consumed and produced by
+// the five pure extension transforms.
 export type {
   Fix,
   FixKind,
@@ -126,14 +125,14 @@ export {
   transposeNotes,
 } from './transforms/notes.js';
 
-// Pure extension transforms (Wave B): the SDK-free heart of each of the five
+// Pure extension transforms: the SDK-free heart of each of the five
 // extensions. Plain data in, plain data out; the handlers below wrap these.
 
-// Scale Lock (W1).
+// Scale Lock.
 export { snapToScale } from './transforms/scale.js';
 export type { SnapResult } from './transforms/scale.js';
 
-// Humanize / Groove Sculptor (W2). `humanize` takes an INJECTED rng for determinism.
+// Humanize / Groove Sculptor. `humanize` takes an INJECTED rng for determinism.
 export {
   assertValidHumanizeOpts,
   gridInfoFrom,
@@ -142,7 +141,7 @@ export {
   MIN_HUMANIZED_VELOCITY,
 } from './transforms/groove.js';
 
-// Gain Stage Doctor (W3) loudness math.
+// Gain Stage Doctor loudness math.
 export {
   analyzeLoudness,
   ASSUMED_DB_FROM_MIN_TO_UNITY,
@@ -151,25 +150,25 @@ export {
   suggestTrimDb,
 } from './transforms/loudness.js';
 
-// Session-to-Song Builder (W5) arrangement planner.
+// Session-to-Song Builder arrangement planner.
 export { beatsPerBar, planArrangement } from './transforms/arrangement.js';
 
-// Set Janitor (W6) hygiene rules.
+// Set Janitor hygiene rules.
 export { DEFAULT_CLIP_PALETTE, detectIssues, planFixes } from './transforms/janitor.js';
 
-// Command handlers (Wave B): the thin read-map-write glue between the LiveBridge port
-// and the pure transforms above, each running every mutation in ONE transaction (one
-// undo). SDK-free, so they run against FakeLiveBridge (ring 2) and the real adapter.
+// Command handlers: the thin read-map-write glue between the LiveBridge port and the
+// pure transforms above. They stay SDK-free, so the same handlers run against
+// FakeLiveBridge in tests and the real adapter in the extension host.
 
-// Scale Lock (W1).
+// Scale Lock.
 export { runScaleLock } from './handlers/scale-lock.js';
 export type { ScaleLockArgs, ScaleLockResult } from './handlers/scale-lock.js';
 
-// Humanize / Groove Sculptor (W2). `runHumanize` threads an INJECTED rng through.
+// Humanize / Groove Sculptor. `runHumanize` threads an INJECTED rng through.
 export { runHumanize } from './handlers/humanize.js';
 export type { HumanizeArgs } from './handlers/humanize.js';
 
-// Gain Stage Doctor (W3). Analysis is read-only; applying a reviewed plan is explicit.
+// Gain Stage Doctor. Analysis is read-only; applying a reviewed plan is explicit.
 export { analyzeGainStageDoctor, applyGainStageDoctor } from './handlers/gain-stage-doctor.js';
 export type {
   DecodeWav,
@@ -182,10 +181,10 @@ export type {
   GainStageSilence,
 } from './handlers/gain-stage-doctor.js';
 
-// Session-to-Song Builder (W5).
+// Session-to-Song Builder.
 export { runSessionToSong } from './handlers/session-to-song.js';
 export type { SessionToSongArgs, SessionToSongResult } from './handlers/session-to-song.js';
 
-// Set Janitor (W6).
+// Set Janitor.
 export { runSetJanitor } from './handlers/set-janitor.js';
 export type { SetJanitorArgs, SetJanitorResult } from './handlers/set-janitor.js';

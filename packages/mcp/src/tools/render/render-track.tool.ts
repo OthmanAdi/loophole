@@ -5,7 +5,7 @@
  * directory, and return the path (the seam Gain Stage Doctor sits on). This
  * produces a file, it does not change the Set, so it is NOT a transaction (there
  * is nothing to undo). The render is pre-FX and, per the SDK, practical for audio
- * tracks; the description says so plainly (02_BRIDGE_SPEC §5 tool 12).
+ * tracks; the description says so plainly.
  *
  * The cross-field `endBeat > startBeat` constraint is expressed with `.refine`,
  * which is why this tool's input is a full object schema with a refinement.

@@ -63,7 +63,7 @@ export function register(api: ExtensionContext<V>, bridge: LiveBridge): void {
 
 /**
  * Read the Set, detect issues, show the checklist, then apply the chosen fixes via
- * {@link runSetJanitor} (which re-detects and matches by the same stable ids).
+ * {@link runSetJanitor}, which re-detects and matches the same deterministic issue keys.
  */
 async function handle(api: ExtensionContext<V>, bridge: LiveBridge): Promise<void> {
   // No complete verified Live palette is available here, so color diagnosis stays

@@ -3,7 +3,7 @@
  *
  * Set the Set tempo in BPM. One queued transaction = one undo. The valid range
  * (20..999) is enforced by Zod before the handler runs, so an out-of-range value
- * is a clean `BAD_INPUT` (02_BRIDGE_SPEC §5, tool 5).
+ * is a clean `BAD_INPUT`.
  */
 
 import { z } from 'zod';

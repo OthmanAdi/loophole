@@ -20,17 +20,17 @@ The dependency direction is: `transport` imports `tools` imports `domain` (the `
 
 ## You do not need a Live license to contribute
 
-This is the point most Ableton tooling gets wrong. Because all Ableton access is behind `FakeLiveBridge` in tests, the entire server is exercised on Linux, in milliseconds, with no Ableton install and no license. You only need Live for the manual ring 3 smoke pass, and only when you change behavior that actually runs inside Live.
+This is the point most Ableton tooling gets wrong. Because all Ableton access is behind `FakeLiveBridge` in tests, the entire server is exercised on Linux, in milliseconds, with no Ableton install and no license. You only need Live for the manual Live smoke pass, and only when you change behavior that actually runs inside Live.
 
-## Test rings
+## Test tiers
 
-There are three rings. Most assertions live in ring 1. Rings 1 and 2 run in CI on every push and need no Live.
+There are three test tiers. Most assertions live in the unit tier. Unit and integration tests run in CI on every push and need no Live.
 
-| Ring           | Needs Live?  | What it proves                                                                          | How                                               |
-| -------------- | ------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| 1. Unit        | no           | Tool handler logic, Zod input validation, pure music transforms                         | `vitest`                                          |
-| 2. Integration | no           | Full client to server to tool to `FakeLiveBridge` round-trip over the real MCP protocol | `vitest` + `InMemoryTransport.createLinkedPair()` |
-| 3. Smoke       | yes (manual) | The real `.ablx` in Live actually moves notes, and one undo reverts                     | tagged checklist, run by hand before a release    |
+| Tier        | Needs Live?  | What it proves                                                                          | How                                               |
+| ----------- | ------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Unit        | no           | Tool handler logic, Zod input validation, pure music transforms                         | `vitest`                                          |
+| Integration | no           | Full client to server to tool to `FakeLiveBridge` round-trip over the real MCP protocol | `vitest` + `InMemoryTransport.createLinkedPair()` |
+| Live smoke  | yes (manual) | The real `.ablx` in Live actually moves notes, and one undo reverts                     | tagged checklist, run by hand before a release    |
 
 ### Running locally
 
@@ -40,7 +40,7 @@ The repo uses pnpm workspaces. From the repo root:
 pnpm install --ignore-scripts   # supply-chain hardening; see SECURITY.md
 pnpm typecheck                  # tsc --noEmit across all packages (hard gate)
 pnpm lint                       # eslint across all packages
-pnpm test                       # vitest, rings 1 and 2
+pnpm test                       # vitest unit and integration tests
 pnpm build                      # build all packages
 pnpm format:check               # prettier --check .
 pnpm audit --prod --audit-level high
@@ -56,7 +56,7 @@ Run `pnpm format` to fix formatting before you push.
 1. Add the method to the `LiveBridge` interface (DTOs only, never an SDK type).
 2. Implement it in `FakeLiveBridge` so it matches the documented SDK contract (sync vs async, undo behavior, validation, deleted-handle throw).
 3. Implement the matching translation in `AbletonLiveBridge`.
-4. Add a contract test that runs the same assertion against the fake that the ring 3 checklist runs against real Live, so the fake cannot drift silently.
+4. Add a contract test that runs the same assertion against the fake that the manual Live checklist runs against real Live, so the fake cannot drift silently.
 
 If the SDK contract is unclear, state your assumption in the PR rather than guessing quietly.
 

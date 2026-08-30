@@ -1,13 +1,13 @@
 /**
- * Scale Lock (W1) command handler: the thin read-map-write glue between the
+ * Scale Lock command handler: the thin read-map-write glue between the
  * {@link LiveBridge} port and the pure {@link snapToScale} transform.
  *
- * This is a ring-2 handler in the architecture of 03_EXTENSIONS_SPEC §0: it imports
- * only the port (DTOs + string ids), never the SDK, so it runs against the
+ * This SDK-free handler imports only the port, DTOs, references, and pure transform,
+ * so it runs against the
  * {@link import("../fake-live-bridge.js").FakeLiveBridge} with no Ableton install.
- * The `activate()` wiring shell (ring 3) calls this with the real `AbletonLiveBridge`.
+ * The extension activation shell calls it with the real `AbletonLiveBridge`.
  *
- * Flow (03_EXTENSIONS_SPEC §1(b)):
+ * Flow:
  *  1. read the Set's scale once from {@link LiveBridge.getSongOverview} (`rootNote` +
  *     `scaleIntervals`),
  *  2. inside ONE {@link LiveBridge.transaction} (one undo across all clips), for each
@@ -16,7 +16,7 @@
  *
  * The transaction callback is synchronous (per the SDK contract): the `.map` runs to
  * completion, building the `Promise.all` of writes and fully summing `movedCount`,
- * before the returned promise is awaited. A stale or wrong-type clip id makes
+ * before the returned promise is awaited. A stale or wrong-type clip reference makes
  * {@link LiveBridge.getNotes} throw synchronously inside the callback, so the bridge
  * rolls the whole transaction back and rejects with the typed `BridgeError`; no undo
  * step is committed.

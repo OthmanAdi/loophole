@@ -1,8 +1,8 @@
 /**
- * Ring 1 unit tests for the pure arrangement planner (Session-to-Song, W5).
+ * Unit tests for the pure arrangement planner used by Session-to-Song.
  * No bridge, no I/O: hand-built {@link SessionDTO}s in, exact {@link PlanResult} out.
  *
- * The bulk of Session-to-Song's correctness lives here (03_EXTENSIONS_SPEC §4(f)):
+ * The bulk of Session-to-Song's correctness lives here:
  * bars-to-beats accumulation, mixed-meter maths, one placement per
  * (section × track-with-a-clip-in-that-scene), cue-point beats on the section
  * boundaries with the right names, and an empty scene yielding no placements.

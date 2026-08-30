@@ -1,5 +1,5 @@
 /**
- * The recipe Prompts (02_BRIDGE_SPEC §6.2).
+ * Reusable recipe prompts for common Ableton workflows.
  *
  * A small set of MCP Prompts ships the cookbook operations as reusable,
  * parameterized scaffolds. They are TEMPLATES that compose the 12 tools, not new

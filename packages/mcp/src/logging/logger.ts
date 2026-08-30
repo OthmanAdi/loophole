@@ -4,8 +4,8 @@
  * stdout is reserved for the MCP JSON-RPC channel when the server runs over a
  * stdio transport (the cifake entry and any stdio host), so the bridge must
  * never write logs to stdout. Routing pino to fd 2 keeps diagnostics off the
- * wire; in Live, the Extension Host tees stderr into `ExtensionHost.txt`
- * (02_BRIDGE_SPEC §1.2). `no-console` is a lint warning for the same reason:
+ * wire; in Live, the Extension Host tees stderr into `ExtensionHost.txt`.
+ * `no-console` is a lint warning for the same reason:
  * shipped code logs through this logger, never `console.*`.
  *
  * The level honours `LOOPHOLE_LOG_LEVEL` (falling back to `info`) so an operator

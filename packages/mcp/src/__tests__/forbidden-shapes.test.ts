@@ -2,7 +2,7 @@
  * Negative control for `assertNoForbiddenShapes` (the harness scanner).
  *
  * The scanner backs the first-class claim that no `Handle`/`bigint` ever crosses
- * the MCP wire (02_BRIDGE_SPEC §3, §8). Every integration test feeds it CLEAN
+ * the MCP wire. Every integration test feeds it CLEAN
  * payloads, so without a negative control a silent no-op bug in the walker would
  * let every "no forbidden shape" assertion pass vacuously. These tests plant the
  * forbidden shapes and assert the scanner THROWS, proving it actually inspects the

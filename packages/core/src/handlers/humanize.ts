@@ -1,15 +1,15 @@
 /**
- * Command handler for Humanize / Groove Sculptor (W2), 03_EXTENSIONS_SPEC §2(b).
+ * Command handler for Humanize / Groove Sculptor.
  *
- * This is the ring-2 layer: it reads the Set through the {@link LiveBridge} port,
- * feeds plain note data to the pure {@link humanize} transform, and writes the result
- * back, all inside ONE transaction so the whole pass is a single undo. It imports only
- * the port (DTOs + string ids) and the pure transform; it never imports the SDK, so it
+ * It reads the Set through the {@link LiveBridge} port, feeds plain note data to the
+ * pure {@link humanize} transform, and writes the result back, all inside ONE
+ * transaction so the whole pass is a single undo. It imports only the port, DTOs,
+ * references, and pure transform; it never imports the SDK, so it
  * runs on CI against {@link import('../fake-live-bridge.js').FakeLiveBridge} with no
  * Ableton install.
  *
- * The transaction shape is the §2(b) one verbatim: `clip.notes =` is a synchronous
- * setter, but the port models a notes write as the async {@link LiveBridge.setNotes}
+ * The host's `clip.notes =` setter is synchronous, but the port models a notes write
+ * as the async {@link LiveBridge.setNotes}
  * (one queued transaction each), so to collapse N clips into one undo the callback
  * stays synchronous and returns `Promise.all([...])` of the per-clip writes. The grid
  * is read and derived BEFORE the transaction opens (a read needs no transaction), and

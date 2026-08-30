@@ -1,5 +1,5 @@
 /**
- * Gain Stage Doctor (W3) orchestration.
+ * Gain Stage Doctor orchestration.
  *
  * Analysis is deliberately separate from mutation. Rendering, decoding, measuring and
  * proposing trims are read-only with respect to the Live Set. A caller must present

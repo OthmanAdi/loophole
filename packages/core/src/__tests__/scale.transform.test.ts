@@ -1,8 +1,8 @@
 /**
- * Ring 1 unit tests for the pure {@link snapToScale} transform (Scale Lock, W1). No
- * bridge, no I/O, exact-output assertions. 03_EXTENSIONS_SPEC §1(f).
+ * Unit tests for the pure {@link snapToScale} transform used by Scale Lock. No bridge,
+ * no I/O, exact-output assertions.
  *
- * Covers the spec's required cases: C-major exact tables, an in-scale note left
+ * Covers the required cases: C-major exact tables, an in-scale note left
  * unchanged, a note between two scale tones under each of up/down/nearest, the 0/127
  * MIDI boundary clamp, an empty scale (no-op), and movedCount correctness. Plus one
  * strengthening case (a scale with a 3-semitone gap) that pins `'nearest'` as DISTINCT

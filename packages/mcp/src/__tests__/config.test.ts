@@ -1,7 +1,7 @@
 /**
- * Ring 1 (unit) — the Zod-validated runtime config (02_BRIDGE_SPEC §1.2, §2).
+ * Unit coverage for the Zod-validated runtime configuration.
  *
- * The config is the contract the transport/auth layer (a later wave) and the
+ * The config is the contract the transport/auth integration layer and the
  * result helpers read from. The claims pinned here:
  *  - the locked defaults are the documented loopback posture (127.0.0.1, the
  *    8420..8429 probe range, the 25k character limit);
@@ -22,7 +22,7 @@ import {
   loadConfig,
 } from '../config/config.js';
 
-describe('ring 1: loadConfig defaults and validation', () => {
+describe('loadConfig defaults and validation', () => {
   it('produces the locked loopback defaults when given nothing', () => {
     const config = loadConfig();
     expect(config.host).toBe(DEFAULT_HOST);

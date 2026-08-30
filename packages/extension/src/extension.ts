@@ -1,8 +1,7 @@
 /**
  * Loophole extension entry point: `activate()`.
  *
- * This is the SDK wiring shell (03_EXTENSIONS_SPEC §0 layer 3 / 02_BRIDGE_SPEC §1.3).
- * It is the file Live calls when the extension loads. It:
+ * This is the SDK wiring shell and the file Live calls when the extension loads. It:
  *
  *  1. initializes the SDK (`initialize(activation, "1.0.0")`),
  *  2. constructs the one SDK-touching object, {@link AbletonLiveBridge}, from the
@@ -18,18 +17,18 @@
  *     `storageDirectory` for the `/setup` skill to read, and
  *  6. registers all five context-menu commands, each wired to its pure-core handler.
  *
- * Per 02_BRIDGE_SPEC §1.1 everything started here lives for the whole Live session: the
- * server, the transport, the queue inside the bridge, and the HTTP listener.
+ * Everything started here lives for the whole Live session: the server, the transport,
+ * the queue inside the bridge, and the HTTP listener.
  *
  * This file imports `@ableton-extensions/sdk` (via `initialize`) and the SDK-facing
  * command modules + adapter, so it is EXCLUDED from the committed CI tsconfig (it cannot
  * typecheck without the SDK present) and is typechecked LOCALLY against the real
  * extracted v1.0.0-beta.0 types through `tsconfig.live.json`.
  *
- * RING-3 PENDING (no Ableton here; none of this has run in real Live): the loopback
- * bind, the Host/Origin/bearer rejection on a live MCP client, the one-undo behavior of
- * each command, and the `.ablx` install + hot-load flow are verified only by the manual
- * `E2E_CHECKLIST.md`. Every SDK call is typed against the genuine `.d.mts`.
+ * Ableton runtime verification is NOT_RUN here: the loopback bind, Host/Origin/bearer
+ * rejection on a live MCP client, each command's undo behavior, and the `.ablx` install
+ * and hot-load flow remain manual checks in `E2E_CHECKLIST.md`. Every SDK call is typed
+ * against the genuine `.d.mts`.
  */
 
 import {
@@ -88,8 +87,8 @@ export function activate(activation: ActivationContext): void {
   registerSessionToSong(context, bridge);
   registerSetJanitor(context, bridge);
 
-  // Start the in-process Streamable HTTP MCP server (02_BRIDGE_SPEC §1.3). Fire and
-  // forget: `activate` is synchronous (the SDK's contract), the bind is async, and any
+  // Start the in-process Streamable HTTP MCP server. Fire and forget: `activate` is
+  // synchronous (the SDK's contract), the bind is async, and any
   // startup failure is logged inside, so the context-menu commands above keep working.
   void startBridgeServer(context, bridge);
 }
@@ -109,7 +108,7 @@ async function startBridgeServer(
   try {
     const bridgeServer = buildServer(bridge);
     server = bridgeServer;
-    // Stateless mode (one Live session = one logical MCP session, 02_BRIDGE_SPEC §1.3):
+    // Stateless mode: one Live session is one logical MCP session.
     // per the SDK docstring, OMITTING `sessionIdGenerator` disables session management,
     // identical to the docstring's `sessionIdGenerator: undefined`. We omit it rather
     // than pass `undefined` because the SDK types the field as optional-not-`| undefined`
@@ -128,7 +127,7 @@ async function startBridgeServer(
     const { token, allowedOrigins } = readOrCreateAuth(context.environment.storageDirectory);
 
     const httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
-      // §2: loopback is enforced by the bind; check the path, exact Host, Origin, then
+      // Loopback is enforced by the bind; check the path, exact Host, Origin, then
       // bearer BEFORE handing the request to the transport. Never read the body here
       // (the transport parses it); only the headers are inspected.
       if (!isMcpPath(req)) {

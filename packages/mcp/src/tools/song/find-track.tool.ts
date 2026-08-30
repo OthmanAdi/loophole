@@ -3,8 +3,7 @@
  *
  * Turn a human track name ("the bass", "Drums") into opaque track references, and
  * disambiguate when several match. Zero matches is a valid answer (not an error):
- * the result reports `count: 0` with a hint to list all tracks
- * (02_BRIDGE_SPEC §5, tool 2).
+ * the result reports `count: 0` with a hint to list all tracks.
  */
 
 import { z } from 'zod';
