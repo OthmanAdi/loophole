@@ -476,6 +476,8 @@ export interface LoudnessResult {
   readonly rmsDb: number;
   /** Crest factor in dB (`peakDb - rmsDb`). */
   readonly crest: number;
+  /** True only when the rendered channel set contains no non-zero finite sample. */
+  readonly isSilent: boolean;
 }
 
 /**

@@ -18,6 +18,7 @@
  * (analyze, suggest) is exact dB arithmetic with no unknowns.
  */
 
+import { badInput } from '../errors.js';
 import type { LoudnessResult, MixerParam } from '../dtos.js';
 
 /**
@@ -73,6 +74,9 @@ export function analyzeLoudness(channels: readonly Float32Array[]): LoudnessResu
       // noUncheckedIndexedAccess: a typed-array index is `number | undefined` to TS,
       // so coerce the in-bounds read to a number (NaN-guarded below by Math).
       const sample = channel[i] ?? 0;
+      if (!Number.isFinite(sample)) {
+        throw badInput('Decoded audio contains a non-finite PCM sample.');
+      }
       const abs = sample < 0 ? -sample : sample;
       if (abs > peakAmp) {
         peakAmp = abs;
@@ -84,13 +88,17 @@ export function analyzeLoudness(channels: readonly Float32Array[]): LoudnessResu
 
   if (sampleCount === 0) {
     // No samples at all: report the guarded silence floor with a 0 dB crest.
-    return { peakDb: SILENCE_FLOOR_DB, rmsDb: SILENCE_FLOOR_DB, crest: 0 };
+    return { peakDb: SILENCE_FLOOR_DB, rmsDb: SILENCE_FLOOR_DB, crest: 0, isSilent: true };
   }
 
   const rmsAmp = Math.sqrt(sumSquares / sampleCount);
   const peakDb = ampToDb(peakAmp);
   const rmsDb = ampToDb(rmsAmp);
-  return { peakDb, rmsDb, crest: peakDb - rmsDb };
+  const crest = peakDb - rmsDb;
+  if (![peakDb, rmsDb, crest].every(Number.isFinite)) {
+    throw badInput('Loudness analysis produced a non-finite result.');
+  }
+  return { peakDb, rmsDb, crest, isSilent: peakAmp === 0 };
 }
 
 /**
@@ -104,7 +112,14 @@ export function analyzeLoudness(channels: readonly Float32Array[]): LoudnessResu
  * internal range happens later, in {@link dbToParamValue}.
  */
 export function suggestTrimDb(rmsDb: number, targetDb: number): number {
-  return targetDb - rmsDb;
+  if (!Number.isFinite(rmsDb) || !Number.isFinite(targetDb)) {
+    throw badInput('Loudness target and measured RMS must be finite.');
+  }
+  const trimDb = targetDb - rmsDb;
+  if (!Number.isFinite(trimDb)) {
+    throw badInput('Gain trim calculation produced a non-finite result.');
+  }
+  return trimDb;
 }
 
 /**
@@ -155,6 +170,9 @@ export const ASSUMED_DB_FROM_MIN_TO_UNITY = 70;
  *   a handler passes the read-back volume parameter straight in.
  */
 export function dbToParamValue(db: number, p: MixerParam): number {
+  if (![db, p.min, p.max, p.defaultValue].every(Number.isFinite) || p.min > p.max) {
+    throw badInput('Mixer volume bounds and gain trim must be finite and ordered.');
+  }
   const unity = p.defaultValue;
   const span = unity - p.min;
   // No usable lower span to derive a slope from: hold unity (still clamped to range).
@@ -163,6 +181,9 @@ export function dbToParamValue(db: number, p: MixerParam): number {
   }
   const unitsPerDb = span / ASSUMED_DB_FROM_MIN_TO_UNITY;
   const raw = unity + db * unitsPerDb;
+  if (!Number.isFinite(raw)) {
+    throw badInput('Mixer value calculation produced a non-finite result.');
+  }
   return clampToRange(raw, p.min, p.max);
 }
 

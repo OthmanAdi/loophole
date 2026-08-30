@@ -14,6 +14,7 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { BridgeError } from '../errors.js';
 import type { MixerParam } from '../dtos.js';
 import {
   ASSUMED_DB_FROM_MIN_TO_UNITY,
@@ -67,6 +68,7 @@ describe('analyzeLoudness: silence is guarded (no -Infinity / NaN)', () => {
     expect(result.peakDb).toBe(SILENCE_FLOOR_DB);
     expect(result.rmsDb).toBe(SILENCE_FLOOR_DB);
     expect(result.crest).toBe(0);
+    expect(result.isSilent).toBe(true);
     expect(Number.isFinite(result.peakDb)).toBe(true);
     expect(Number.isFinite(result.rmsDb)).toBe(true);
   });
@@ -76,11 +78,13 @@ describe('analyzeLoudness: silence is guarded (no -Infinity / NaN)', () => {
     expect(result.peakDb).toBe(SILENCE_FLOOR_DB);
     expect(result.rmsDb).toBe(SILENCE_FLOOR_DB);
     expect(result.crest).toBe(0);
+    expect(result.isSilent).toBe(true);
   });
 
   it('empty channels are treated as silence', () => {
     const result = analyzeLoudness([new Float32Array(0), new Float32Array(0)]);
     expect(result.rmsDb).toBe(SILENCE_FLOOR_DB);
+    expect(result.isSilent).toBe(true);
   });
 });
 
@@ -103,6 +107,25 @@ describe('analyzeLoudness: DC offset has peak == rms (0 dB crest)', () => {
     const result = analyzeLoudness([dc(-0.5)]);
     expect(result.peakDb).toBeCloseTo(-6.0206, 3);
     expect(result.rmsDb).toBeCloseTo(-6.0206, 3);
+  });
+});
+
+describe('loudness numeric safety', () => {
+  it('rejects NaN and Infinity samples instead of treating them as silence', () => {
+    const nan = new Float32Array([0, 1]);
+    nan[1] = Number.NaN;
+    const infinity = new Float32Array([0, 1]);
+    infinity[1] = Number.POSITIVE_INFINITY;
+    for (const channel of [nan, infinity]) {
+      expect(() => analyzeLoudness([channel])).toThrowError(BridgeError);
+    }
+  });
+
+  it('rejects non-finite trim and mixer inputs', () => {
+    expect(() => suggestTrimDb(Number.NaN, -18)).toThrowError(BridgeError);
+    expect(() =>
+      dbToParamValue(Number.POSITIVE_INFINITY, { min: 0, max: 1, defaultValue: 0.85 }),
+    ).toThrowError(BridgeError);
   });
 });
 

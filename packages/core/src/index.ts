@@ -166,14 +166,17 @@ export type { ScaleLockArgs, ScaleLockResult } from './handlers/scale-lock.js';
 export { runHumanize } from './handlers/humanize.js';
 export type { HumanizeArgs } from './handlers/humanize.js';
 
-// Gain Stage Doctor (W3). `runGainStageDoctor` takes an INJECTED `DecodeWav` callback,
-// so core never imports `node:fs` or an audio-decode package.
-export { runGainStageDoctor } from './handlers/gain-stage-doctor.js';
+// Gain Stage Doctor (W3). Analysis is read-only; applying a reviewed plan is explicit.
+export { analyzeGainStageDoctor, applyGainStageDoctor } from './handlers/gain-stage-doctor.js';
 export type {
   DecodeWav,
   GainStageDoctorArgs,
-  GainStageDoctorResult,
-  GainStageRow,
+  GainStageAnalysis,
+  GainStageApplyResult,
+  GainStageMeasurement,
+  GainStageProposal,
+  GainStageProposedTrim,
+  GainStageSilence,
 } from './handlers/gain-stage-doctor.js';
 
 // Session-to-Song Builder (W5).
