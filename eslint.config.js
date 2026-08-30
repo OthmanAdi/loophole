@@ -22,6 +22,7 @@ export default tseslint.config(
       // the beta SDK is non-redistributable. They are typechecked locally through
       // tsconfig.live.json; SDK-free adapter infrastructure remains linted in CI.
       'packages/extension/src/adapter/live-bridge.ableton.ts',
+      'packages/extension/src/adapter/public-bridge-contract.ts',
       'packages/extension/src/adapter/mappers.ts',
       'packages/extension/src/adapter/resolver.ts',
       'packages/extension/src/adapter/selection.ts',
@@ -81,7 +82,7 @@ export default tseslint.config(
     // declaration emit), so the project service cannot type-check them. Point
     // the type-aware program for this package at tsconfig.eslint.json, which
     // includes src plus tests, so test files are linted with full type info.
-    files: ['packages/mcp/src/**/*.ts'],
+    files: ['packages/mcp/src/**/*.ts', 'packages/mcp/scripts/**/*.mjs'],
     languageOptions: {
       parserOptions: {
         projectService: false,

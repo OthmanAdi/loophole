@@ -12,6 +12,7 @@
     "**/*.test.ts",
     "**/*.spec.ts",
     "src/adapter/live-bridge.ableton.ts",
+    "src/adapter/public-bridge-contract.ts",
     "src/adapter/resolver.ts",
     "src/adapter/mappers.ts",
     "src/adapter/selection.ts",

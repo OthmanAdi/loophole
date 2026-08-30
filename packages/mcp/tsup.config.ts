@@ -18,7 +18,9 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: ['src/index.ts', 'src/cifake.ts'],
   format: ['esm'],
-  dts: true,
+  // Resolve the internal, source-only core types into the declaration bundle.
+  // The public tarball must not ask TypeScript consumers to install core.
+  dts: { resolve: true },
   clean: true,
   sourcemap: true,
   noExternal: ['@othmanadi/loophole-core'],

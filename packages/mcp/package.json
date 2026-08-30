@@ -24,11 +24,11 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:artifact": "node scripts/verify-packed-artifact.mjs",
     "build": "tsup"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@othmanadi/loophole-core": "workspace:*",
     "pino": "^9.14.0",
     "zod": "^4.5.4"
   },

@@ -60,6 +60,10 @@ jobs:
       - name: Build
         run: pnpm -r build
 
+      - name: Packed MCP artifact smoke
+        if: matrix.node == 22
+        run: pnpm --filter @othmanadi/ableton-mcp test:artifact
+
   coverage-windows:
     name: coverage (windows, node 24)
     runs-on: windows-latest
