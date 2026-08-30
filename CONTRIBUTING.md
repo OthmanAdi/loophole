@@ -43,6 +43,8 @@ pnpm lint                       # eslint across all packages
 pnpm test                       # vitest, rings 1 and 2
 pnpm build                      # build all packages
 pnpm format:check               # prettier --check .
+pnpm audit --prod --audit-level high
+(cd docs && npm ci --ignore-scripts && npm audit --omit=dev --audit-level high)
 ```
 
 Run `pnpm format` to fix formatting before you push.
@@ -73,6 +75,7 @@ If the SDK contract is unclear, state your assumption in the PR rather than gues
 - **Do not add `Co-Authored-By` trailers.** Contributors are credited in the CHANGELOG Thanks section and `CONTRIBUTORS.md`, not in commit trailers.
 - Prose in PR descriptions, issues, and changelog entries: plain and matter-of-fact, no marketing language, no dash used as a pause (use a comma, a colon, parentheses, or rewrite the sentence).
 - A PR is ready when: tests cover the change, typecheck and lint are green, the smoke checklist is run if you changed in-Live behavior, and docs are updated if you changed the tool surface.
+- Keep `@ableton-extensions/sdk` imports inside the allowlisted SDK-facing shell. CI rejects imports outside that boundary without requiring the non-redistributable SDK package.
 
 ## Questions
 

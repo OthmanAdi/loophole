@@ -6,10 +6,10 @@ Loophole lets an LLM read and edit a user's Ableton Live project. That makes it 
 
 Please report security issues **privately**, not in a public issue or pull request.
 
-- Use GitHub's private vulnerability reporting: open the repository's **Security** tab and choose **Report a vulnerability**. This opens a private advisory visible only to the maintainer and you.
+- Use GitHub's private vulnerability reporting when it is enabled: open the repository's **Security** tab and choose **Report a vulnerability**. If that option is unavailable, do not open a public issue or pull request. Contact the maintainer through the GitHub profile to arrange a private channel.
 - Include enough to reproduce: what you did, what happened, the Live build, your OS, your Node version, and the Loophole and SDK API versions if relevant.
 
-You will get an acknowledgement within 5 business days and a status update within 10. We will agree a disclosure timeline with you before anything is made public, and credit you in the advisory unless you ask us not to.
+We will agree a disclosure timeline with you before anything is made public, and credit you in the advisory unless you ask us not to.
 
 Please do not run automated scanners against anyone else's machine, and do not test against a Live Set you do not own.
 
@@ -30,11 +30,12 @@ Further boundaries, by design:
 
 Loophole follows a hardened install and publish policy:
 
-- `pnpm install --ignore-scripts` everywhere, including CI.
-- Exact-pinned dependency versions and a committed lockfile.
-- A minimal runtime dependency tree, audited deliberately.
-- `npm audit` (high and above) in CI.
-- Publishing via npm Trusted Publishing (OIDC), so no long-lived npm token is stored, and provenance is attached automatically.
+- Workspace installs use `pnpm install --frozen-lockfile --ignore-scripts`.
+- The standalone docs site uses `npm ci --ignore-scripts`.
+- Committed lockfiles provide the dependency inputs for CI installs.
+- CI fails on high-severity production dependency findings in the workspace and docs dependency graphs.
+- Workflow actions are pinned to full commit SHAs and updated through Dependabot when repository Dependabot updates are enabled.
+- The repository does not publish packages through an automated release workflow yet.
 
 ## Scope
 

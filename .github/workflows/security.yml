@@ -1,0 +1,95 @@
+name: Security checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dependencies-and-boundaries:
+    name: dependency audit and SDK boundary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: 10.13.1
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Audit workspace production dependencies
+        run: pnpm audit --prod --audit-level=high
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm ci --ignore-scripts
+
+      - name: Audit docs production dependencies
+        working-directory: docs
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Check Ableton SDK import boundary
+        shell: bash
+        run: |
+          node --input-type=module <<'EOF'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+
+          const allowed = new Set([
+            'packages/extension/src/adapter/live-bridge.ableton.ts',
+            'packages/extension/src/adapter/mappers.ts',
+            'packages/extension/src/adapter/reference-service.ts',
+            'packages/extension/src/adapter/resolver.ts',
+            'packages/extension/src/adapter/selection.ts',
+            'packages/extension/src/commands/gain-stage-doctor.command.ts',
+            'packages/extension/src/commands/humanize.command.ts',
+            'packages/extension/src/commands/scale-lock.command.ts',
+            'packages/extension/src/commands/session-to-song.command.ts',
+            'packages/extension/src/commands/set-janitor.command.ts',
+            'packages/extension/src/extension.ts',
+          ]);
+          const files = execFileSync('git', ['ls-files', 'packages'], {
+            encoding: 'utf8',
+          })
+            .split('\n')
+            .filter(Boolean);
+          const sdkImport = /(?:from\s*|import\s*\()["']@ableton-extensions\/sdk["']/;
+          const violations = files.filter(
+            (file) => sdkImport.test(readFileSync(file, 'utf8')) && !allowed.has(file),
+          );
+          if (violations.length > 0) {
+            console.error('Unexpected @ableton-extensions/sdk imports:');
+            console.error(violations.join('\n'));
+            process.exit(1);
+          }
+          const trackedVendorFiles = execFileSync('git', ['ls-files', 'packages/extension/vendor'], {
+            encoding: 'utf8',
+          })
+            .split('\n')
+            .filter(Boolean);
+          if (trackedVendorFiles.length > 0) {
+            console.error('SDK vendor files must not be committed:');
+            console.error(trackedVendorFiles.join('\n'));
+            process.exit(1);
+          }
+          EOF
