@@ -161,12 +161,12 @@ The server is built so a large Set never floods the model's context.
 
 This package is transport-agnostic, so the network posture is enforced by the [extension shell](../extension) when it mounts the server in Live, not by `buildServer` itself. The model that the shell enforces:
 
-- **Loopback bind.** The listener binds `127.0.0.1`, never `0.0.0.0`, so the bridge is off the LAN by construction. This package locks the host to the `127.0.0.1` literal in its config and never exposes an override.
+- **Loopback bind.** The extension shell binds its listener to `127.0.0.1`, never `0.0.0.0`, so the shipped bridge is off the LAN by construction and exposes no host override.
 - **Origin check (403 on mismatch).** A request whose `Origin` is a web origin not on the allow list is dropped before it reaches the server. This is the DNS-rebinding guard: a random browser tab cannot drive Live. Native MCP clients that send no `Origin` pass.
 - **Bearer token (401 on mismatch).** On first activation the shell generates a random token, writes it to `bridge.json` in the extension's storage directory, and rejects any request without a matching `Authorization: Bearer` header. The human pastes the token into their client config once; the token is never in any tool output and never reaches the model.
 - **No filesystem escape.** Render output goes to the temp directory; the bridge never exposes arbitrary read or write of the user's disk.
 
-The in-package piece is `config.ts`: a Zod-validated config that locks the loopback host and the port-probe range. The socket, the auth gates, and `bridge.json` are the shell's job, kept out of this package so the published server drags no transport or auth assumptions into a consumer's tree. See the root [SECURITY.md](../../SECURITY.md) for the disclosure path.
+The in-package `config.ts` exports validated defaults for library consumers and supplies the result-size limit used by response helpers. The shipped listener's bind address, port probe, socket, auth gates, and `bridge.json` lifecycle are owned by the extension shell, so this published server opens no transport and adds no auth assumptions to a consumer's tree. See the root [SECURITY.md](../../SECURITY.md) for the disclosure path.
 
 ---
 

@@ -98,7 +98,7 @@ The server exposes opaque session references returned by current list and read c
 
 The tools are the product. Each one is a deterministic command: validated input (Zod), finite and domain-checked numeric values, a single well-defined effect on the Set, and a structured result. The LLM only decides _which_ command to run and _with what arguments_. It never touches Live directly.
 
-That split is the safety story and the test story. The deterministic layer is covered by fast unit and in-process integration tests that need no running Live. The stochastic layer (does the model pick the right tool for "shift this up an octave") is one small eval suite, run nightly, not on every commit. Most of the assertions are deterministic; the AI surface stays small on purpose.
+That split is the safety story and the test story. The deterministic layer is covered by fast unit and in-process integration tests that need no running Live. Model-choice evaluation (does the model pick the right tool for "shift this up an octave") is not part of the shipped repository yet, so Loophole makes no nightly-eval or model-quality claim. The AI surface stays small on purpose.
 
 ---
 

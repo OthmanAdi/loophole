@@ -1,20 +1,21 @@
 /**
- * The bridge's runtime configuration: a small, Zod-validated, plain object.
+ * Reusable library configuration defaults in a small, Zod-validated plain object.
  *
- * This is config ONLY. It carries the loopback host, the port-probe range, and
+ * This is config ONLY. It carries reusable loopback and port-probe defaults plus
  * the output character limit, and it validates them. It does NOT open a socket,
- * import `node:http`, or read the filesystem: the transport, auth, and
- * `bridge.json` discovery are the extension shell's concern. The values here
- * are the contract that integration layer and the result helpers read from.
+ * import `node:http`, or read the filesystem: the shipped transport, auth, and
+ * `bridge.json` discovery are the extension shell's concern. Result helpers read
+ * the character limit here; other consumers may validate their own transport
+ * configuration against the exported schema.
  */
 
 import { z } from 'zod';
 
-/** Lowest port the bridge probes for its loopback listener. */
+/** Recommended first port for a consumer-provided loopback listener. */
 export const PORT_RANGE_START = 8420;
-/** Highest port the bridge probes for its loopback listener. */
+/** Recommended last port for a consumer-provided loopback listener. */
 export const PORT_RANGE_END = 8429;
-/** The loopback host the bridge binds to; never `0.0.0.0`. */
+/** Safe default host for a consumer-provided listener; never `0.0.0.0`. */
 export const DEFAULT_HOST = '127.0.0.1';
 /** Hard cap on a tool/resource text payload, in characters. */
 export const CHARACTER_LIMIT = 25_000;
@@ -28,7 +29,7 @@ export const ConfigSchema = z
     host: z
       .literal('127.0.0.1')
       .default(DEFAULT_HOST)
-      .describe('Loopback bind address. Locked to 127.0.0.1: the bridge is never on the LAN.'),
+      .describe('Safe loopback bind default for a consumer-provided listener.'),
     portRangeStart: z
       .number()
       .int()
@@ -61,13 +62,13 @@ export type Config = z.infer<typeof ConfigSchema>;
 /**
  * Validate (and default) a partial config into a complete {@link Config}.
  *
- * Pass nothing to get the locked defaults (the common case: the bridge ships
- * with a fixed loopback posture). Pass a partial to override individual fields;
- * unknown keys and out-of-range values throw a `ZodError`.
+ * Pass nothing to get the library defaults. A consumer that owns a transport
+ * may override individual fields; unknown keys and out-of-range values throw a
+ * `ZodError`. The shipped extension shell enforces its own fixed listener values.
  */
 export function loadConfig(overrides?: unknown): Config {
   return ConfigSchema.parse(overrides ?? {});
 }
 
-/** The default config, used by the result helpers' character cap. */
+/** Precomputed library defaults for consumers that want the complete validated object. */
 export const defaultConfig: Config = loadConfig();
