@@ -13,7 +13,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --root ../.. packages/extension/src",
+    "test:coverage": "vitest run --root ../.. packages/extension/src --coverage --coverage.include=packages/extension/src/**",
     "build": "node -e \"console.log('loophole-extension: CI build is a no-op placeholder; the real .ablx bundle is the local-only build:live / package:live scripts')\"",
     "build:live": "tsc -p tsconfig.live.json --noEmit && tsx build.ts",
     "start:live": "tsx build.ts && extensions-cli run",

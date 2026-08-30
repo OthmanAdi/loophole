@@ -1,6 +1,6 @@
 /**
  * Transport bootstrap for the in-process Loophole Bridge: port probing, the bearer
- * token + Origin allow list, the `bridge.json` discovery file, and the two request
+ * token + Origin allow list, the `bridge.json` discovery file, and the request
  * gates the `node:http` listener applies before handing a request to the MCP
  * transport (02_BRIDGE_SPEC §1.3 + §2; ARCHITECTURE_DECISIONS §4).
  *
@@ -18,8 +18,8 @@
  * `E2E_CHECKLIST.md`. The shapes and the Node calls are typed against `@types/node`.
  */
 
-import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { chmodSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { IncomingMessage, Server } from 'node:http';
 import { sdkRejected } from '@othmanadi/loophole-core';
@@ -36,8 +36,11 @@ export const PORT_RANGE_START = 8420;
 /** Last port of the probe range (inclusive). */
 export const PORT_RANGE_END = 8429;
 
-/** Token length in bytes before base64url encoding (02_BRIDGE_SPEC §2: ≥ 16 bytes). */
+/** Token length in bytes before lowercase hexadecimal encoding. */
 const TOKEN_BYTES = 32;
+
+/** Persisted tokens are exactly 32 random bytes encoded as 64 lowercase hex digits. */
+const TOKEN_PATTERN = /^[0-9a-f]{64}$/u;
 
 /** The discovery file name written into the extension's `storageDirectory`. */
 export const BRIDGE_JSON_FILE = 'bridge.json';
@@ -51,7 +54,7 @@ export const BRIDGE_JSON_FILE = 'bridge.json';
 export interface BridgeJson {
   /** The loopback port the listener bound (one of {@link PORT_RANGE_START}..{@link PORT_RANGE_END}). */
   readonly port: number;
-  /** The bearer token every request must carry (base64url, ≥ 16 bytes of entropy). */
+  /** The bearer token every request must carry (64 lowercase hex digits, 32 bytes). */
   readonly token: string;
   /** Always `"http"` for this transport. */
   readonly transport: 'http';
@@ -68,6 +71,18 @@ export interface AuthState {
    * clients send no `Origin` and pass; any browser `Origin` is rejected unless listed.
    */
   readonly allowedOrigins: readonly string[];
+}
+
+/** A resource whose asynchronous `close` releases bridge startup state. */
+export interface AsyncClosable {
+  close(): Promise<void>;
+}
+
+/** Resources that can exist when bridge startup aborts part-way through. */
+export interface PartialBridgeResources {
+  readonly http: Server | undefined;
+  readonly mcp: AsyncClosable | undefined;
+  readonly transport: AsyncClosable | undefined;
 }
 
 /**
@@ -92,6 +107,18 @@ export async function listenOnFreePort(
   start: number = PORT_RANGE_START,
   end: number = PORT_RANGE_END,
 ): Promise<number> {
+  if (
+    !Number.isInteger(start) ||
+    !Number.isInteger(end) ||
+    start < 1 ||
+    end > 65_535 ||
+    start > end
+  ) {
+    throw sdkRejected(
+      `Invalid bridge port range ${String(start)}..${String(end)}.`,
+      'Configure an ordered range of TCP ports between 1 and 65535.',
+    );
+  }
   for (let port = start; port <= end; port += 1) {
     const bound = await tryListen(server, port);
     if (bound) {
@@ -132,8 +159,58 @@ function tryListen(server: Server, port: number): Promise<boolean> {
 }
 
 /**
+ * Release every resource created before bridge startup failed. The MCP server owns
+ * its connected transport, so a successful MCP close is sufficient. If that close
+ * itself fails (or no MCP server was constructed), the transport is closed directly
+ * as a fallback. Listener shutdown is attempted first so no new requests arrive while
+ * the protocol is being torn down.
+ */
+export async function cleanupPartialBridge(resources: PartialBridgeResources): Promise<void> {
+  const failures: unknown[] = [];
+
+  if (resources.http?.listening === true) {
+    try {
+      await closeHttpServer(resources.http);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+
+  let mcpClosed = false;
+  if (resources.mcp !== undefined) {
+    try {
+      await resources.mcp.close();
+      mcpClosed = true;
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  if (!mcpClosed && resources.transport !== undefined) {
+    try {
+      await resources.transport.close();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new AggregateError(failures, 'Failed to fully clean up partial bridge startup.');
+  }
+}
+
+/** Close a listening Node HTTP server and await release of the bound port. */
+function closeHttpServer(server: Server): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error === undefined) resolve();
+      else reject(error);
+    });
+  });
+}
+
+/**
  * Read the bearer token from an existing `bridge.json` in `storageDirectory`, or mint a
- * fresh one (≥ 16 bytes, base64url) on first run. The human pastes the token into their
+ * fresh one (32 bytes, lowercase hex) on first run. The human pastes the token into their
  * client config once; reusing it across sessions keeps that config stable
  * (02_BRIDGE_SPEC §2). The Origin allow list is empty by default (native clients pass,
  * web origins are rejected).
@@ -155,9 +232,9 @@ export function readOrCreateAuth(storageDirectory: string | undefined): AuthStat
   return { token, allowedOrigins: [] };
 }
 
-/** Mint a fresh base64url bearer token with {@link TOKEN_BYTES} bytes of entropy. */
+/** Mint a fresh lowercase-hex bearer token with {@link TOKEN_BYTES} bytes of entropy. */
 function mintToken(): string {
-  return randomBytes(TOKEN_BYTES).toString('base64url');
+  return randomBytes(TOKEN_BYTES).toString('hex');
 }
 
 /**
@@ -173,10 +250,10 @@ function tryReadToken(storageDirectory: string): string | null {
       typeof parsed === 'object' &&
       parsed !== null &&
       'token' in parsed &&
-      typeof (parsed as { token: unknown }).token === 'string' &&
-      (parsed as { token: string }).token.length > 0
+      typeof parsed.token === 'string' &&
+      TOKEN_PATTERN.test(parsed.token)
     ) {
-      return (parsed as { token: string }).token;
+      return parsed.token;
     }
     return null;
   } catch {
@@ -194,35 +271,81 @@ function tryReadToken(storageDirectory: string): string | null {
  * @param token the bearer token from {@link readOrCreateAuth}.
  */
 export function writeBridgeJson(storageDirectory: string, port: number, token: string): BridgeJson {
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw sdkRejected(
+      `Refusing to persist invalid bridge port ${String(port)}.`,
+      'Restart the extension so it can select a valid loopback port.',
+    );
+  }
+  if (!TOKEN_PATTERN.test(token)) {
+    throw sdkRejected(
+      'Refusing to persist an invalid bridge bearer token.',
+      'Restart the extension so it can rotate the token.',
+    );
+  }
   const bridge: BridgeJson = {
     port,
     token,
     transport: 'http',
     url: `http://${LOOPBACK_HOST}:${String(port)}${MCP_PATH}`,
   };
-  mkdirSync(storageDirectory, { recursive: true });
-  writeFileSync(join(storageDirectory, BRIDGE_JSON_FILE), `${JSON.stringify(bridge, null, 2)}\n`, {
-    encoding: 'utf8',
-  });
+  mkdirSync(storageDirectory, { recursive: true, mode: 0o700 });
+  bestEffortPrivateMode(storageDirectory, 0o700);
+
+  const destination = join(storageDirectory, BRIDGE_JSON_FILE);
+  const temporary = join(
+    storageDirectory,
+    `.${BRIDGE_JSON_FILE}.${randomBytes(8).toString('hex')}.tmp`,
+  );
+  try {
+    writeFileSync(temporary, `${JSON.stringify(bridge, null, 2)}\n`, {
+      encoding: 'utf8',
+      flag: 'wx',
+      mode: 0o600,
+    });
+    bestEffortPrivateMode(temporary, 0o600);
+    renameSync(temporary, destination);
+    bestEffortPrivateMode(destination, 0o600);
+  } catch (error) {
+    try {
+      unlinkSync(temporary);
+    } catch {
+      // The write may have failed before the temporary file existed.
+    }
+    throw error;
+  }
   return bridge;
+}
+
+/** Apply a private POSIX mode where the platform supports it. */
+function bestEffortPrivateMode(path: string, mode: number): void {
+  try {
+    chmodSync(path, mode);
+  } catch {
+    // Windows does not implement POSIX ACL bits; the host profile ACL remains in force.
+  }
 }
 
 /**
  * The Origin gate (02_BRIDGE_SPEC §2, the DNS-rebinding guard). A request with NO
- * `Origin` header passes (native MCP clients send none). A request whose `Origin` is a
- * `null`/loopback origin passes. Any other web origin must be on `allowedOrigins` or it
- * is rejected (the listener returns 403). This runs BEFORE the bearer check and BEFORE
+ * `Origin` header passes (native MCP clients send none). An opaque `null` origin is
+ * rejected because it cannot identify its caller. A concrete loopback origin passes;
+ * any other web origin must be on `allowedOrigins` or it is rejected (the listener
+ * returns 403). This runs BEFORE the bearer check and BEFORE
  * `transport.handleRequest`.
  *
  * @returns `true` if the request may proceed past the Origin gate.
  */
 export function checkOrigin(req: IncomingMessage, allowedOrigins: readonly string[]): boolean {
-  const origin = headerValue(req.headers.origin);
+  const origin = uniqueHeaderValue(req, 'origin');
   if (origin === undefined) {
     // Native app, no browser Origin: allowed.
     return true;
   }
-  if (origin === 'null' || isLoopbackOrigin(origin)) {
+  if (origin === null || origin === 'null') {
+    return false;
+  }
+  if (isLoopbackOrigin(origin)) {
     return true;
   }
   return allowedOrigins.includes(origin);
@@ -231,7 +354,19 @@ export function checkOrigin(req: IncomingMessage, allowedOrigins: readonly strin
 /** True for an `http(s)://localhost` / `127.0.0.1` / `[::1]` origin (any port). */
 function isLoopbackOrigin(origin: string): boolean {
   try {
-    const { hostname } = new URL(origin);
+    const parsed = new URL(origin);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username.length > 0 ||
+      parsed.password.length > 0 ||
+      parsed.pathname !== '/' ||
+      parsed.search.length > 0 ||
+      parsed.hash.length > 0 ||
+      parsed.origin !== origin
+    ) {
+      return false;
+    }
+    const { hostname } = parsed;
     return (
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
@@ -244,6 +379,23 @@ function isLoopbackOrigin(origin: string): boolean {
 }
 
 /**
+ * Validate the HTTP `Host` header against the exact endpoint held by this listener.
+ * The allow list is deliberately fixed to the IPv4 loopback bind and `localhost`, at
+ * the selected port; external names, alternate ports, duplicates, and missing hosts
+ * are rejected to prevent DNS rebinding.
+ */
+export function checkHost(req: IncomingMessage, port: number): boolean {
+  const host = uniqueHeaderValue(req, 'host');
+  if (host === undefined || host === null || host.includes(',')) {
+    return false;
+  }
+  const normalized = host.toLowerCase();
+  return (
+    normalized === `${LOOPBACK_HOST}:${String(port)}` || normalized === `localhost:${String(port)}`
+  );
+}
+
+/**
  * The bearer gate (02_BRIDGE_SPEC §2). The request must carry
  * `Authorization: Bearer <token>` exactly matching `token`, or the listener returns
  * 401. Runs AFTER {@link checkOrigin} and BEFORE `transport.handleRequest`. The token
@@ -252,15 +404,18 @@ function isLoopbackOrigin(origin: string): boolean {
  * @returns `true` if the bearer token matches.
  */
 export function checkBearer(req: IncomingMessage, token: string): boolean {
-  const header = headerValue(req.headers.authorization);
-  if (header === undefined) {
+  if (!TOKEN_PATTERN.test(token)) {
     return false;
   }
-  const prefix = 'Bearer ';
-  if (!header.startsWith(prefix)) {
+  const header = uniqueHeaderValue(req, 'authorization');
+  if (header === undefined || header === null || header.includes(',')) {
     return false;
   }
-  const presented = header.slice(prefix.length).trim();
+  const match = /^Bearer ([0-9a-f]{64})$/u.exec(header);
+  if (match === null) {
+    return false;
+  }
+  const presented = match[1] ?? '';
   return timingSafeEqualString(presented, token);
 }
 
@@ -276,17 +431,31 @@ export function isMcpPath(req: IncomingMessage): boolean {
 }
 
 /**
- * Normalize a Node header value (which may be `string | string[] | undefined`) to a
- * single string, or `undefined` when absent. A repeated header takes its first value.
+ * Return one unambiguous header value. `null` means the wire carried duplicates or a
+ * multi-value representation; security gates reject that instead of choosing one.
+ * `rawHeaders` is authoritative because Node may collapse or discard duplicates in
+ * `headers` before application code sees them.
  */
-function headerValue(value: string | readonly string[] | undefined): string | undefined {
-  if (value === undefined) {
-    return undefined;
+function uniqueHeaderValue(req: IncomingMessage, name: string): string | null | undefined {
+  const rawValues: string[] = [];
+  for (let index = 0; index < req.rawHeaders.length; index += 2) {
+    if (req.rawHeaders[index]?.toLowerCase() === name) {
+      rawValues.push(req.rawHeaders[index + 1] ?? '');
+    }
   }
+  if (rawValues.length > 1) {
+    return null;
+  }
+  if (rawValues.length === 1) {
+    return rawValues[0];
+  }
+
+  const value = req.headers[name];
+  if (value === undefined) return undefined;
   if (Array.isArray(value)) {
-    return value[0];
+    return value.length === 1 ? (value[0] ?? '') : null;
   }
-  return value as string;
+  return value;
 }
 
 /**
@@ -296,13 +465,8 @@ function headerValue(value: string | readonly string[] | undefined): string | un
  * the length difference itself without leaking it through an early return.)
  */
 function timingSafeEqualString(a: string, b: string): boolean {
-  let mismatch = a.length === b.length ? 0 : 1;
-  const max = Math.max(a.length, b.length);
-  for (let i = 0; i < max; i += 1) {
-    // charCodeAt past the end is NaN; XOR-ing with a sentinel keeps the loop constant.
-    const ca = i < a.length ? a.charCodeAt(i) : -1;
-    const cb = i < b.length ? b.charCodeAt(i) : -1;
-    mismatch |= ca ^ cb;
-  }
-  return mismatch === 0;
+  const left = Buffer.from(a, 'utf8');
+  const right = Buffer.from(b, 'utf8');
+  if (left.length !== right.length) return false;
+  return timingSafeEqual(left, right);
 }
