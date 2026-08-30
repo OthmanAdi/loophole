@@ -58,6 +58,7 @@ import {
   type ClipInfo,
   type ClipSlotId,
   type CreateAudioClipArgs,
+  type CuePointId,
   type CuePointInfo,
   type DeviceInfo,
   type DeviceParamInfo,
@@ -496,49 +497,35 @@ export class AbletonLiveBridge implements LiveBridge {
     });
   }
 
-  /**
-   * Create an Arrangement cue point at `beat`, then set its name.
-   *
-   * SDK LIMITATION (RING-3, flagged): `Song.createCuePoint(time)` is async and the name
-   * is set via the SYNC `CuePoint.name =` setter, but you cannot create-then-configure
-   * inside one `withinTransaction` (the callback is sync and you need the created
-   * instance first, 01_SDK_MAP §5 / 02_BRIDGE_SPEC §4). So this is TWO undo steps in
-   * real Live, not one — the port's "grouped as one undo" doc is aspirational against
-   * this API version. The create and the rename run in ONE queue slot (so they never
-   * re-enter the queue and deadlock), each its own collapsed transaction. When nested
-   * inside {@link AbletonLiveBridge.transaction}, both run inline (no queue hop) and the
-   * outer transaction batches them into its single undo step, which is the only way to
-   * make Session-to-Song's "cue points + placements in one undo" actually hold.
-   */
-  async createCuePoint(beat: number, name: string): Promise<CuePointInfo> {
+  async createCuePoint(beat: number, name?: string): Promise<CuePointInfo> {
     if (!Number.isFinite(beat) || beat < 0) {
       throw badInput(`Cue point beat ${String(beat)} must be a non-negative number.`);
     }
-    const run = async (): Promise<CuePointInfo> => {
-      const created = await this.#context.withinTransaction(() =>
-        this.#resolver.song.createCuePoint(beat),
+    if (name !== undefined && this.#txDepth > 0) {
+      throw badInput(
+        'A cue point name depends on the asynchronous creator result and cannot share this transaction.',
+        'Create the cue point first, then set its name in a second transaction.',
       );
-      // Name it via the sync setter (its own collapsed transaction / the outer one).
-      this.#context.withinTransaction(() => {
-        created.name = name;
-        return undefined;
-      });
-      const cuePoints = this.#resolver.song.cuePoints;
-      const cpIndex = cuePoints.findIndex(
-        (cuePoint) => cuePoint === created && cuePoint.handle.id === created.handle.id,
-      );
-      if (cpIndex < 0) throw sdkRejected('Cue point creation did not yield a cue point.');
-      return cuePointInfo(
-        this.#references.issueCuePoint(created, cpIndex),
-        created.time,
-        created.name,
-      );
-    };
-    // Nested in a transaction: run inline (the outer txn owns the queue slot + undo).
-    if (this.#txDepth > 0) {
-      return run();
     }
-    return this.#queue.run(run);
+    const created = await this.#write(() => this.#resolver.song.createCuePoint(beat));
+    const index = this.#resolver.song.cuePoints.findIndex(
+      (cuePoint) => cuePoint === created && cuePoint.handle.id === created.handle.id,
+    );
+    if (index < 0) throw sdkRejected('Cue point creation did not yield a cue point.');
+    const id = this.#references.issueCuePoint(created, index);
+    const info = cuePointInfo(id, created.time, created.name);
+    return name === undefined ? info : this.setCuePointName(id, name);
+  }
+
+  async setCuePointName(id: CuePointId, name: string): Promise<CuePointInfo> {
+    const cuePoints = this.#resolver.song.cuePoints;
+    await this.#write(() => {
+      const cuePoint = this.#references.resolveCuePoint(id) as (typeof cuePoints)[number];
+      cuePoint.name = name;
+      return Promise.resolve();
+    });
+    const cuePoint = this.#references.resolveCuePoint(id) as (typeof cuePoints)[number];
+    return cuePointInfo(id, cuePoint.time, cuePoint.name);
   }
 
   async setParam(id: ParamId, value: number): Promise<DeviceParamInfo> {

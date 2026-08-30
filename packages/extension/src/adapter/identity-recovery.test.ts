@@ -188,4 +188,31 @@ describe('identity-based recovery', () => {
     await expect(bridge.createTrack('midi')).rejects.toMatchObject({ code: 'SDK_REJECTED' });
     await expect(bridge.createCuePoint(0, 'Cue')).rejects.toMatchObject({ code: 'SDK_REJECTED' });
   });
+
+  it('uses the creator return value for an unnamed cue, then names it in a later phase', async () => {
+    const song = {
+      tracks: [],
+      scenes: [],
+      cuePoints: [],
+      createCuePoint: async (time) => {
+        const created = { ...object(41n), time, name: '' };
+        song.cuePoints.push(created);
+        return created;
+      },
+    };
+    const bridgeContext = {
+      application: { song },
+      withinTransaction: (operation) => operation(),
+      resources: { renderPreFxAudio: async () => '' },
+    };
+    const bridge = new AbletonLiveBridge(bridgeContext, new ReferenceService(bridgeContext));
+
+    const cue = await bridge.transaction(() => bridge.createCuePoint(4));
+    expect(cue).toMatchObject({ time: 4, name: '' });
+    expect(song.cuePoints).toHaveLength(1);
+
+    const named = await bridge.transaction(() => bridge.setCuePointName(cue.id, 'Verse'));
+    expect(named).toMatchObject({ time: 4, name: 'Verse' });
+    expect(song.cuePoints[0]?.name).toBe('Verse');
+  });
 });

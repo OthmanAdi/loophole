@@ -10,7 +10,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { beatsPerBar, planArrangement } from '../transforms/arrangement.js';
+import {
+  beatsPerBar,
+  cropMidiNotesForPlacement,
+  planArrangement,
+} from '../transforms/arrangement.js';
 import type { ResolvedSection, SessionClipDTO, SessionDTO, TimeSig } from '../dtos.js';
 import { makeSessionReference } from '../references.js';
 
@@ -42,6 +46,9 @@ function buildSession(): SessionDTO {
     name,
     color,
     durationBeats: 4,
+    looping: false,
+    loopStart: 0,
+    loopEnd: 4,
     ...(isMidi
       ? { notes: [{ pitch: 60 + scene, startTime: 0, duration: 1, velocity: 100 }] }
       : { filePath: `/audio/track${String(track)}_scene${String(scene)}.wav` }),
@@ -122,14 +129,14 @@ describe('planArrangement: mixed-meter maths (a 3/4 section)', () => {
     const { cuePoints, placements } = planArrangement(session, sectionMap, FOUR_FOUR);
 
     expect(cuePoints.map((c) => c.beat)).toEqual([0, 16, 28]);
-    // The Verse (3/4) placements span 12 beats, not 16.
+    // Non-looping sources are placed once, never stretched to the 12-beat section.
     const verseKeys = placements.find((p) => p.name === 'Verse Keys');
     expect(verseKeys?.startBeat).toBe(16);
-    expect(verseKeys?.durationBeats).toBe(12);
+    expect(verseKeys?.durationBeats).toBe(4);
     // The Chorus that follows starts at 28 (16 + 12), proving the 3/4 shift carried.
     const chorusKeys = placements.find((p) => p.name === 'Chorus Keys');
     expect(chorusKeys?.startBeat).toBe(28);
-    expect(chorusKeys?.durationBeats).toBe(16);
+    expect(chorusKeys?.durationBeats).toBe(4);
   });
 });
 
@@ -166,7 +173,7 @@ describe('planArrangement: one placement per (section x track-with-a-clip-in-tha
     expect(keys?.sourceClipRef).toBe(clipRef(0, 1));
     expect(keys?.name).toBe('Verse Keys');
     expect(keys?.color).toBe(8421504); // source clip color (no section override)
-    expect(keys?.durationBeats).toBe(16); // 4 bars * 4 beats
+    expect(keys?.durationBeats).toBe(4); // source length, never stretched
 
     const drums = placements.find((p) => p.trackIndex === 1);
     expect(drums?.sourceClipRef).toBe(clipRef(1, 1));
@@ -181,6 +188,65 @@ describe('planArrangement: one placement per (section x track-with-a-clip-in-tha
     const { placements } = planArrangement(session, sectionMap, FOUR_FOUR);
     expect(placements.length).toBe(2);
     expect(placements.every((p) => p.color === 99)).toBe(true);
+  });
+});
+
+describe('planArrangement: physical loop expansion', () => {
+  it('repeats a looping source and crops the final physical clip at the section boundary', () => {
+    const base = buildSession();
+    const session: SessionDTO = {
+      ...base,
+      clips: base.clips.map((clip) =>
+        clip.trackIndex === 0 && clip.sceneIndex === 0
+          ? { ...clip, looping: true, loopStart: 1, loopEnd: 5 }
+          : clip,
+      ),
+    };
+    const { placements } = planArrangement(
+      session,
+      [{ name: 'A', sceneIndex: 0, bars: 2.5 }],
+      FOUR_FOUR,
+    );
+    expect(placements).toMatchObject([
+      { startBeat: 0, durationBeats: 4, sourceStartBeat: 1 },
+      { startBeat: 4, durationBeats: 4, sourceStartBeat: 1 },
+      { startBeat: 8, durationBeats: 2, sourceStartBeat: 1 },
+    ]);
+  });
+
+  it('crops and translates MIDI notes into the physical clip source window', () => {
+    expect(
+      cropMidiNotesForPlacement(
+        [
+          { pitch: 60, startTime: 0, duration: 2, velocity: 100 },
+          { pitch: 61, startTime: 2, duration: 4, velocity: 101 },
+          { pitch: 62, startTime: 6, duration: 1, velocity: 102 },
+        ],
+        1,
+        4,
+      ),
+    ).toEqual([
+      { pitch: 60, startTime: 0, duration: 1, velocity: 100 },
+      { pitch: 61, startTime: 1, duration: 3, velocity: 101 },
+    ]);
+  });
+
+  it.each([
+    { bars: 0, sig: FOUR_FOUR },
+    { bars: -1, sig: FOUR_FOUR },
+    { bars: Number.NaN, sig: FOUR_FOUR },
+    { bars: Number.POSITIVE_INFINITY, sig: FOUR_FOUR },
+    { bars: 1, sig: { num: 4, den: 0 } },
+    { bars: 1, sig: { num: Number.POSITIVE_INFINITY, den: 4 } },
+  ])('rejects invalid section geometry before it can expand a loop', ({ bars, sig }) => {
+    const base = buildSession();
+    const session: SessionDTO = {
+      ...base,
+      clips: base.clips.map((clip) => ({ ...clip, looping: true })),
+    };
+    expect(() => planArrangement(session, [{ name: 'Bad', sceneIndex: 0, bars }], sig)).toThrow(
+      RangeError,
+    );
   });
 });
 

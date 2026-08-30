@@ -52,7 +52,7 @@ import type {
   TrackMixerInfo,
   TrackPropsPatch,
 } from './dtos.js';
-import type { ClipId, ClipSlotId, ParamId, TrackId } from './ids.js';
+import type { ClipId, ClipSlotId, CuePointId, ParamId, TrackId } from './ids.js';
 
 export interface LiveBridge {
   // --- reads: synchronous handle-backed getters, return a snapshot ---
@@ -268,14 +268,14 @@ export interface LiveBridge {
   clearClipsInRange(trackId: TrackId, startBeat: number, endBeat: number): Promise<void>;
 
   /**
-   * Create an Arrangement cue point (locator) at `beat` with `name`. Resolves to the
-   * new {@link CuePointInfo}. Mirrors `Song.createCuePoint(time)` followed by the sync
-   * `CuePoint.name =` setter, grouped as one undo. Backs Session-to-Song's section
-   * locators.
-   *
-   * @throws BridgeError `BAD_INPUT` if `beat` is negative or not finite.
+   * Create an Arrangement cue point at `beat`. `name` is a compatibility convenience
+   * for standalone callers; Session-to-Song creates unnamed cue points and names them
+   * in its dependent second phase.
    */
-  createCuePoint(beat: number, name: string): Promise<CuePointInfo>;
+  createCuePoint(beat: number, name?: string): Promise<CuePointInfo>;
+
+  /** Set a cue point name after its creator returned its opaque reference. */
+  setCuePointName(cuePointId: CuePointId, name: string): Promise<CuePointInfo>;
 
   /**
    * Set one device parameter to a value (within the parameter's own `min..max`).

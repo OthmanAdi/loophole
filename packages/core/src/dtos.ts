@@ -527,6 +527,12 @@ export interface SessionClipDTO {
   readonly color: number;
   /** Clip length in beats (the source loop length). */
   readonly durationBeats: number;
+  /** Whether the source Session clip loops during playback. */
+  readonly looping: boolean;
+  /** Start of the active source loop window in clip-local beats. */
+  readonly loopStart: number;
+  /** End of the active source loop window in clip-local beats. */
+  readonly loopEnd: number;
   /** MIDI notes, present for MIDI clips only (omitted for audio). */
   readonly notes?: readonly NoteDTO[];
   /** Source audio file path, present for audio clips only (omitted for MIDI). */
@@ -606,6 +612,8 @@ export interface Placement {
   readonly startBeat: number;
   /** Clip length in beats. */
   readonly durationBeats: number;
+  /** Clip-local source beat that becomes beat zero in this physical Arrangement clip. */
+  readonly sourceStartBeat: number;
   /** Stable id of the source Session clip to copy (notes for MIDI, file for audio). */
   readonly sourceClipRef: ClipId;
   /** Name to set on the placed clip. */

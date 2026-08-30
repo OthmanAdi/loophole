@@ -49,7 +49,7 @@ import type {
   TrackPropsPatch,
 } from './dtos.js';
 import { badInput, sdkRejected, staleReference, wrongType } from './errors.js';
-import type { ClipId, ClipSlotId, ParamId, TrackId } from './ids.js';
+import type { ClipId, ClipSlotId, CuePointId, ParamId, TrackId } from './ids.js';
 import type { LiveBridge } from './live-bridge.js';
 import {
   SessionReferenceRegistry,
@@ -863,6 +863,15 @@ export class FakeLiveBridge implements LiveBridge {
     );
   }
 
+  #resolveCuePoint(id: CuePointId): CuePointModel {
+    return this.#resolveReference(
+      id,
+      'cue-point',
+      (identity) => this.#findCuePoint(identity),
+      'cue point',
+    );
+  }
+
   #resolveClipLocation(id: ClipId): LocatedClip {
     return this.#resolveReference(id, 'clip', (identity) => this.#findClip(identity), 'clip');
   }
@@ -983,6 +992,10 @@ export class FakeLiveBridge implements LiveBridge {
       }
     }
     return null;
+  }
+
+  #findCuePoint(identity: number): CuePointModel | null {
+    return this.#song.cuePoints.find((cuePoint) => cuePoint.identity === identity) ?? null;
   }
 
   // --- reads (synchronous) ---
@@ -1287,20 +1300,25 @@ export class FakeLiveBridge implements LiveBridge {
     });
   }
 
-  async createCuePoint(beat: number, name: string): Promise<CuePointInfo> {
+  async createCuePoint(beat: number, name?: string): Promise<CuePointInfo> {
     return this.#mutate(() => {
       if (!Number.isFinite(beat) || beat < 0) {
         throw badInput(`Cue point beat ${String(beat)} must be a non-negative number.`);
       }
-      this.#song.cuePoints.push({ time: beat, name });
+      const created: CuePointModel = { time: beat, name: name ?? '' };
+      this.#identity(created);
+      this.#song.cuePoints.push(created);
       // Keep cue points ordered by time, the way Live presents locators; the returned
       // id reflects the post-insert index.
       this.#song.cuePoints.sort((a, b) => a.time - b.time);
-      const cuePoint = this.#song.cuePoints.find(
-        (candidate) => candidate.time === beat && candidate.name === name,
-      );
-      if (cuePoint === undefined)
-        throw sdkRejected('Cue point creation did not yield a cue point.');
+      return this.#cuePointInfo(created);
+    });
+  }
+
+  async setCuePointName(id: CuePointId, name: string): Promise<CuePointInfo> {
+    return this.#mutate(() => {
+      const cuePoint = this.#resolveCuePoint(id);
+      cuePoint.name = name;
       return this.#cuePointInfo(cuePoint);
     });
   }

@@ -1,31 +1,12 @@
-/**
- * Command handler for Session-to-Song Builder.
- *
- * This is the I/O half that wraps the pure {@link planArrangement}: it READS the
- * Session through the {@link LiveBridge} port (scenes, then each track's clips, then
- * the MIDI notes of every MIDI source clip) into a plain {@link SessionDTO}, PLANS
- * the build with the pure transform, then WRITES the whole arrangement back inside
- * ONE {@link LiveBridge.transaction} so the entire build is a single undo.
- *
- * It imports no SDK and speaks only the existing core port + DTOs, so it runs
- * unchanged against {@link import('../fake-live-bridge.js').FakeLiveBridge} and
- * against the real `AbletonLiveBridge`. The transaction callback returns `Promise.all([...])`
- * of the range clears, the per-placement create-then-populate helpers, and the
- * cue-point creates. Never `await` inside the callback; each placement helper does
- * its own awaiting and is collected into the one `Promise.all`.
- *
- * Ordering inside the `Promise.all` array is load-bearing: the clears come first.
- * The array's element order is the synchronous execution order of each mutation's
- * body, and a clear that ran after a create on the same track would discard the clip
- * just placed. Clearing the touched tracks first keeps the target range clean and
- * leaves the freshly created clips in place.
- */
+/** Build a Session selection into physical Arrangement clips in SDK-safe phases. */
 
-import type { ClipId, SceneId, TrackId } from '../ids.js';
+import type { SceneId, TrackId } from '../ids.js';
 import { isPlayableClip } from '../dtos.js';
-import { badInput, staleReference } from '../errors.js';
+import { badInput, BridgeError, staleReference, unsupported } from '../errors.js';
 import type {
   ClipInfo,
+  CuePointInfo,
+  NoteDTO,
   PopulatedClipInfo,
   Placement,
   PlanResult,
@@ -37,41 +18,63 @@ import type {
   TimeSig,
 } from '../dtos.js';
 import type { LiveBridge } from '../live-bridge.js';
-import { planArrangement } from '../transforms/arrangement.js';
+import { cropMidiNotesForPlacement, planArrangement } from '../transforms/arrangement.js';
 
-/** What {@link runSessionToSong} reports back: the count of clips placed and cue points made. */
 export interface SessionToSongResult {
-  /** Number of {@link Placement}s written to the Arrangement. */
   readonly placementCount: number;
-  /** Number of cue points (section locators) created. */
   readonly cuePointCount: number;
+  /** Exact undo entries committed by this run. */
+  readonly undoStepCount: 0 | 2 | 3;
 }
 
-/** The arguments {@link runSessionToSong} takes (the section map + the fallback time signature). */
 export interface SessionToSongArgs {
-  /** The user's ordered section list, bound to opaque scene references. */
   readonly sectionMap: readonly Section[];
-  /** Fallback time signature for sections whose scene does not report one (callers pass 4/4). */
   readonly timeSig: TimeSig;
 }
 
 /**
- * Resolve the modal's open-time scene references against the current scene order.
- *
- * A scene may move while the modal is open, so its former numeric position is never
- * trusted. A missing reference is a typed stale-reference failure before the handler
- * reads clips or opens a transaction. The returned index is planning-only and cannot
- * be supplied by a caller alongside a conflicting reference.
+ * A failed phase leaves prior committed phases intact. `undoStepsToRestore` is exact:
+ * it restores the Set to its state before this command, rather than merely removing
+ * visible newly-created clips.
  */
+export class SessionToSongPartialBuildError extends BridgeError {
+  readonly phase: 'create' | 'populate';
+  readonly placementCount: number;
+  readonly cuePointCount: number;
+  readonly undoStepsToRestore: 1 | 2;
+
+  constructor(
+    phase: 'create' | 'populate',
+    placementCount: number,
+    cuePointCount: number,
+    undoStepsToRestore: 1 | 2,
+    cause: unknown,
+  ) {
+    const undoInstruction = undoStepsToRestore === 1 ? 'Undo once' : 'Undo twice';
+    super(
+      'SDK_REJECTED',
+      phase === 'create'
+        ? 'Session-to-Song cleared the target range but could not create its Arrangement structure.'
+        : 'Session-to-Song created the Arrangement structure but could not populate all clip contents and cue names.',
+      {
+        hint: `${undoInstruction} to restore the Set to its pre-run state, then correct the issue and retry.`,
+        cause,
+      },
+    );
+    this.phase = phase;
+    this.placementCount = placementCount;
+    this.cuePointCount = cuePointCount;
+    this.undoStepsToRestore = undoStepsToRestore;
+  }
+}
+
 function resolveSections(
   bridge: LiveBridge,
   sectionMap: readonly Section[],
 ): readonly ResolvedSection[] {
-  const currentScenes = bridge.listScenes();
   const currentIndexByRef = new Map<SceneId, number>(
-    currentScenes.map((scene, index) => [scene.id, index]),
+    bridge.listScenes().map((scene, index) => [scene.id, index]),
   );
-
   return sectionMap.map((section) => {
     const sceneIndex = currentIndexByRef.get(section.sceneRef);
     if (sceneIndex === undefined) {
@@ -85,46 +88,23 @@ function resolveSections(
   });
 }
 
-/**
- * Turn a scene's reported time signature into a {@link SceneDTO} `timeSig`, omitting
- * it when the scene reports the conventional 4/4 so the planner falls back to the
- * plan-level signature (the SDK has no Set-level time signature; the scene always
- * reports one, but a 4/4 scene should not force-override an explicit plan default).
- * A non-4/4 scene signature is carried through so mixed-meter sets plan correctly.
- */
 function sceneTimeSig(numerator: number, denominator: number): TimeSig | undefined {
-  if (numerator === 4 && denominator === 4) {
-    return undefined;
-  }
-  return { num: numerator, den: denominator };
+  return numerator === 4 && denominator === 4 ? undefined : { num: numerator, den: denominator };
 }
 
-/**
- * Read the whole Session into a plain {@link SessionDTO}.
- *
- * Synchronous reads only (`listTracks`, `listScenes`, `listClips` per track,
- * `getNotes` for each MIDI source clip). For every non-empty Session clip it records
- * the owning track and scene index, the name/color/length, and either the MIDI notes
- * (MIDI clips) or the source file path (audio clips), so the pure planner has
- * everything it needs to recreate each clip without re-touching the bridge. Empty
- * Session slots and Arrangement clips are skipped (the planner sources from Session
- * clips only).
- */
 function readSession(bridge: LiveBridge): SessionDTO {
   const tracks = bridge.listTracks();
   const scenes: SceneDTO[] = bridge.listScenes().map((scene, index) => {
     const timeSig = sceneTimeSig(scene.signatureNumerator, scene.signatureDenominator);
-    const dto: SceneDTO =
-      timeSig === undefined ? { index, name: scene.name } : { index, name: scene.name, timeSig };
-    return dto;
+    return timeSig === undefined
+      ? { index, name: scene.name }
+      : { index, name: scene.name, timeSig };
   });
-
   const clips: SessionClipDTO[] = [];
+
   tracks.forEach((track, trackIndex) => {
     for (const entry of bridge.listClips(track.id)) {
-      if (!isPlayableClip(entry) || entry.location !== 'session') {
-        continue;
-      }
+      if (!isPlayableClip(entry) || entry.location !== 'session') continue;
       if (entry.slotId === undefined || entry.sceneIndex === undefined) {
         throw badInput(
           'Bridge returned a populated Session clip without its slot reference or scene index.',
@@ -134,187 +114,289 @@ function readSession(bridge: LiveBridge): SessionDTO {
       clips.push(sessionClipFromInfo(bridge, entry, trackIndex, entry.sceneIndex));
     }
   });
-
   return {
-    tracks: tracks.map((t) => ({ id: t.id, name: t.name, type: t.kind })),
+    tracks: tracks.map((track) => ({ id: track.id, name: track.name, type: track.kind })),
     scenes,
     clips,
   };
 }
 
-/** Build one {@link SessionClipDTO} from a listed Session {@link ClipInfo}. */
 function sessionClipFromInfo(
   bridge: LiveBridge,
   entry: PopulatedClipInfo,
   trackIndex: number,
   sceneIndex: number,
 ): SessionClipDTO {
-  const clipRef = entry.id;
   const base = {
-    clipRef,
+    clipRef: entry.id,
     trackIndex,
     sceneIndex,
     isMidi: entry.isMidi,
     name: entry.name,
     color: entry.color,
     durationBeats: entry.duration,
+    looping: entry.looping,
+    loopStart: entry.loopStart,
+    loopEnd: entry.loopEnd,
   };
-  if (entry.isMidi) {
-    // MIDI source: carry the notes so the placement can repopulate the recreated clip.
-    return { ...base, notes: bridge.getNotes(clipRef) };
-  }
-  // Audio source: carry the file path so the placement can reference it by file.
-  // Omit `filePath` if the bridge did not report one (exactOptionalPropertyTypes).
-  return entry.filePath === undefined ? base : { ...base, filePath: entry.filePath };
+  return entry.isMidi
+    ? { ...base, notes: bridge.getNotes(entry.id) }
+    : entry.filePath === undefined
+      ? base
+      : { ...base, filePath: entry.filePath };
 }
 
-/**
- * Build the Session-to-Song Arrangement in one undo.
- *
- * Reads the Session, plans the build with the pure {@link planArrangement}, then runs
- * a SINGLE {@link LiveBridge.transaction}: clear the touched tracks' target range,
- * create-and-populate each placement, and create each cue point, all collected into
- * one `Promise.all`. Resolves to the placement and cue-point counts.
- *
- * @param bridge the Live bridge port (fake in tests, real adapter in Live).
- * @param args the section map and fallback time signature.
- * @returns `{ placementCount, cuePointCount }`.
- */
-export async function runSessionToSong(
-  bridge: LiveBridge,
-  args: SessionToSongArgs,
-): Promise<SessionToSongResult> {
-  // Resolve selected scene identity before every read that might lead to a write. This
-  // both fails closed on deletion and follows a reordered scene to its current index.
-  const resolvedSections = resolveSections(bridge, args.sectionMap);
-  const session = readSession(bridge);
-  const plan = planArrangement(session, resolvedSections, args.timeSig);
-
-  // A no-op plan (an empty section map yields no placements and no cue points) commits
-  // no transaction: a user action that builds nothing leaves no undo step, matching the
-  // empty-input behavior of the gain-stage-doctor and set-janitor handlers.
-  if (plan.placements.length === 0 && plan.cuePoints.length === 0) {
-    return { placementCount: 0, cuePointCount: 0 };
-  }
-
-  // Index the source clips by their stable id so each placement can find its source
-  // (notes for MIDI, filePath for audio) without another bridge read.
-  const sourceByRef = new Map<string, SessionClipDTO>(
-    session.clips.map((clip) => [clip.clipRef, clip]),
-  );
-
-  await writeBuild(bridge, session, plan, sourceByRef);
-
-  return { placementCount: plan.placements.length, cuePointCount: plan.cuePoints.length };
+interface PreparedPlacement {
+  readonly placement: Placement;
+  readonly source: SessionClipDTO;
+  readonly trackId: TrackId;
+  readonly notes: readonly NoteDTO[] | undefined;
 }
 
-/**
- * The one transaction. The callback is synchronous and returns `Promise.all([...])`
- * of: every touched track's range clear (FIRST, so a clear never discards a clip a
- * later create placed), then every placement's create-then-populate helper, then
- * every cue-point create. Each helper awaits internally; the callback itself never
- * awaits. One call = one undo (the fake asserts exactly one transaction).
- */
-function writeBuild(
-  bridge: LiveBridge,
+function finitePositive(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+function validatePlanningGeometry(
+  session: SessionDTO,
+  sections: readonly ResolvedSection[],
+  fallbackTimeSig: TimeSig,
+): void {
+  if (!finitePositive(fallbackTimeSig.num) || !finitePositive(fallbackTimeSig.den)) {
+    throw badInput('Session-to-Song requires a finite positive fallback time signature.');
+  }
+  let startBeat = 0;
+  for (const section of sections) {
+    const sig = session.scenes[section.sceneIndex]?.timeSig ?? fallbackTimeSig;
+    if (!finitePositive(section.bars) || !finitePositive(sig.num) || !finitePositive(sig.den)) {
+      throw badInput('Session-to-Song sections require finite positive bars and time signatures.');
+    }
+    const sectionBeats = section.bars * sig.num * (4 / sig.den);
+    if (!finitePositive(sectionBeats) || !Number.isFinite(startBeat) || startBeat < 0) {
+      throw badInput('Session-to-Song sections must produce finite positive beat ranges.');
+    }
+    startBeat += sectionBeats;
+    if (!Number.isFinite(startBeat)) {
+      throw badInput('Session-to-Song cue points must remain at finite non-negative beats.');
+    }
+  }
+}
+
+/** Validate all source and target requirements before opening either write phase. */
+function preflight(
   session: SessionDTO,
   plan: PlanResult,
   sourceByRef: ReadonlyMap<string, SessionClipDTO>,
-): Promise<unknown> {
-  // The beat span to clear on each touched track: 0 to the end of the last placement.
-  const rangeEnd = plan.placements.reduce(
-    (max, p) => Math.max(max, p.startBeat + p.durationBeats),
-    0,
-  );
-  const touchedTrackIndices = [...new Set(plan.placements.map((p) => p.trackIndex))];
-
-  return bridge.transaction(() =>
-    Promise.all([
-      // Clears FIRST: clean the target range on every track that will receive a clip.
-      ...touchedTrackIndices.flatMap((trackIndex) => {
-        const track = session.tracks[trackIndex];
-        if (track === undefined || rangeEnd <= 0) {
-          return [];
-        }
-        return [bridge.clearClipsInRange(track.id, 0, rangeEnd)];
-      }),
-      // Then create-and-populate each placement.
-      ...plan.placements.map((placement) => {
-        const track = session.tracks[placement.trackIndex];
-        if (track === undefined) {
-          return Promise.resolve();
-        }
-        return placeClip(bridge, track.id, placement, sourceByRef.get(placement.sourceClipRef));
-      }),
-      // Then create each section cue point.
-      ...plan.cuePoints.map((cue) => bridge.createCuePoint(cue.beat, cue.name)),
-    ]),
-  );
-}
-
-/**
- * Create one Arrangement clip for a placement and populate it.
- *
- * MIDI: `createArrangementMidiClip` then `setNotes` (the source clip's notes) then
- * `setClipProps` (name + color). Audio: `createArrangementAudioClip` by file (the
- * source clip's `filePath`) then `setClipProps`. The create is async and the populate
- * calls await it; all of this runs inside the surrounding transaction (so it
- * collapses to that one undo). This is the "recreate, not move" path: it copies the
- * MIDI notes / references the audio by file rather than relocating the Session clip.
- */
-async function placeClip(
-  bridge: LiveBridge,
-  trackId: TrackId,
-  placement: Placement,
-  source: SessionClipDTO | undefined,
-): Promise<void> {
-  const isMidi = source?.isMidi ?? true;
-  if (isMidi) {
-    const clip = await bridge.createArrangementMidiClip(
-      trackId,
-      placement.startBeat,
-      placement.durationBeats,
-    );
-    const created = requirePlayableClip(clip);
-    if (source?.notes !== undefined && source.notes.length > 0) {
-      await bridge.setNotes(created.id, source.notes);
+): readonly PreparedPlacement[] {
+  return plan.placements.map((placement) => {
+    const source = sourceByRef.get(placement.sourceClipRef);
+    const track = session.tracks[placement.trackIndex];
+    if (source === undefined || track === undefined) {
+      throw badInput(
+        'The Session-to-Song plan references a source clip or target track that no longer exists.',
+      );
     }
-    await applyClipProps(bridge, created.id, placement);
-    return;
-  }
-  // Audio placement: reference the source file. A source with no filePath cannot be
-  // recreated as audio, so skip it rather than create an empty clip.
-  if (source?.filePath === undefined) {
-    return;
-  }
-  const clip = await bridge.createArrangementAudioClip(trackId, {
-    filePath: source.filePath,
-    startTime: placement.startBeat,
-    duration: placement.durationBeats,
+    if (
+      !finitePositive(placement.durationBeats) ||
+      !Number.isFinite(placement.startBeat) ||
+      placement.startBeat < 0 ||
+      !Number.isFinite(placement.sourceStartBeat) ||
+      placement.sourceStartBeat < 0
+    ) {
+      throw badInput(
+        'Session-to-Song produced an invalid Arrangement placement duration or start time.',
+      );
+    }
+    if (!finitePositive(source.durationBeats)) {
+      throw badInput(`Session clip "${source.name}" has an invalid source duration.`);
+    }
+    if (source.isMidi !== (track.type === 'midi')) {
+      throw badInput(`Session clip "${source.name}" does not match its target track type.`);
+    }
+    if (
+      source.looping &&
+      (!Number.isFinite(source.loopStart) ||
+        source.loopStart < 0 ||
+        !finitePositive(source.loopEnd - source.loopStart))
+    ) {
+      throw badInput(`Looping Session clip "${source.name}" has an invalid loop window.`);
+    }
+    if (!source.isMidi) {
+      if (source.filePath === undefined || source.filePath.length === 0) {
+        throw badInput(`Audio Session clip "${source.name}" has no source file path.`);
+      }
+      if (source.loopStart !== 0 || source.loopEnd !== source.durationBeats) {
+        throw unsupported(
+          `Audio Session clip "${source.name}" has a custom loop or source offset that cannot be recreated safely.`,
+          'Use an audio clip whose source starts at beat 0 and whose loop window matches its source duration.',
+        );
+      }
+    }
+    return {
+      placement,
+      source,
+      trackId: track.id,
+      notes: source.isMidi
+        ? cropMidiNotesForPlacement(
+            source.notes ?? [],
+            placement.sourceStartBeat,
+            placement.durationBeats,
+          )
+        : undefined,
+    };
   });
-  await applyClipProps(bridge, requirePlayableClip(clip).id, placement);
 }
 
 function requirePlayableClip(clip: ClipInfo): PopulatedClipInfo {
   if (!isPlayableClip(clip)) {
-    throw new Error('Bridge returned an empty slot for an Arrangement clip create');
+    throw new Error('Bridge returned an empty slot for an Arrangement clip create.');
   }
   return clip;
 }
 
-/**
- * Write a placement's name and color onto the recreated clip. `name` is always set;
- * `color` is set when the placement carries one (it always does in practice, since
- * the planner sources a color from the section override or the source clip).
- */
-async function applyClipProps(
+/** Phase 1 creator only. It must not populate the returned clip. */
+async function createPlacement(
   bridge: LiveBridge,
-  clipId: ClipId,
-  placement: Placement,
-): Promise<void> {
-  const props: { name?: string; color?: number } = { name: placement.name };
-  if (placement.color !== undefined) {
-    props.color = placement.color;
+  prepared: PreparedPlacement,
+): Promise<PopulatedClipInfo> {
+  const { placement, source, trackId } = prepared;
+  const created = source.isMidi
+    ? await bridge.createArrangementMidiClip(trackId, placement.startBeat, placement.durationBeats)
+    : await bridge.createArrangementAudioClip(trackId, {
+        filePath: source.filePath!,
+        startTime: placement.startBeat,
+        duration: placement.durationBeats,
+      });
+  return requirePlayableClip(created);
+}
+
+function clipProps(placement: Placement): { name: string; color?: number } {
+  return placement.color === undefined
+    ? { name: placement.name }
+    : { name: placement.name, color: placement.color };
+}
+
+function clearRangeEnd(plan: PlanResult): number {
+  return plan.placements.reduce(
+    (maximum, placement) => Math.max(maximum, placement.startBeat + placement.durationBeats),
+    0,
+  );
+}
+
+/** Clear first in its own transaction so a delayed SDK clear cannot erase new clips. */
+async function writeClearPhase(
+  bridge: LiveBridge,
+  plan: PlanResult,
+  prepared: readonly PreparedPlacement[],
+): Promise<boolean> {
+  const rangeEnd = clearRangeEnd(plan);
+  const touchedTrackIds = [...new Set(prepared.map((placement) => placement.trackId))];
+  if (rangeEnd <= 0 || touchedTrackIds.length === 0) return false;
+  await bridge.transaction(() =>
+    Promise.all(touchedTrackIds.map((trackId) => bridge.clearClipsInRange(trackId, 0, rangeEnd))),
+  );
+  return true;
+}
+
+/** Create phase: all creators start synchronously, but no dependent mutation runs here. */
+async function writeCreatePhase(
+  bridge: LiveBridge,
+  plan: PlanResult,
+  prepared: readonly PreparedPlacement[],
+): Promise<{ placements: readonly PopulatedClipInfo[]; cuePoints: readonly CuePointInfo[] }> {
+  let placementPromises: readonly Promise<PopulatedClipInfo>[] = [];
+  let cuePointPromises: readonly Promise<CuePointInfo>[] = [];
+
+  await bridge.transaction(() => {
+    placementPromises = prepared.map((placement) => createPlacement(bridge, placement));
+    cuePointPromises = plan.cuePoints.map((cuePoint) => bridge.createCuePoint(cuePoint.beat));
+    return Promise.all([...placementPromises, ...cuePointPromises]);
+  });
+
+  return {
+    placements: await Promise.all(placementPromises),
+    cuePoints: await Promise.all(cuePointPromises),
+  };
+}
+
+function writePhaseTwo(
+  bridge: LiveBridge,
+  prepared: readonly PreparedPlacement[],
+  createdPlacements: readonly PopulatedClipInfo[],
+  cuePoints: readonly CuePointInfo[],
+  plan: PlanResult,
+): Promise<unknown> {
+  return bridge.transaction(() =>
+    Promise.all([
+      ...prepared.flatMap((preparedPlacement, index) => {
+        const created = createdPlacements[index];
+        if (created === undefined)
+          throw new Error('Phase 1 did not return every created Arrangement clip.');
+        const writes: Promise<unknown>[] = [];
+        if (preparedPlacement.notes !== undefined) {
+          writes.push(bridge.setNotes(created.id, preparedPlacement.notes));
+        }
+        writes.push(bridge.setClipProps(created.id, clipProps(preparedPlacement.placement)));
+        return writes;
+      }),
+      ...cuePoints.map((cuePoint, index) => {
+        const cue = plan.cuePoints[index];
+        if (cue === undefined) throw new Error('Phase 1 did not return every created cue point.');
+        return bridge.setCuePointName(cuePoint.id, cue.name);
+      }),
+    ]),
+  );
+}
+
+export async function runSessionToSong(
+  bridge: LiveBridge,
+  args: SessionToSongArgs,
+): Promise<SessionToSongResult> {
+  // This stale-reference check is before all source reads and all writes.
+  const resolvedSections = resolveSections(bridge, args.sectionMap);
+  const session = readSession(bridge);
+  validatePlanningGeometry(session, resolvedSections, args.timeSig);
+  const plan = planArrangement(session, resolvedSections, args.timeSig);
+  if (plan.placements.length === 0 && plan.cuePoints.length === 0) {
+    return { placementCount: 0, cuePointCount: 0, undoStepCount: 0 };
   }
-  await bridge.setClipProps(clipId, props);
+
+  const sourceByRef = new Map<string, SessionClipDTO>(
+    session.clips.map((clip) => [clip.clipRef, clip]),
+  );
+  // No write transaction opens until all sources, geometry, types, and audio limits
+  // have been checked and MIDI note crops computed.
+  const prepared = preflight(session, plan, sourceByRef);
+  const didClear = await writeClearPhase(bridge, plan, prepared);
+  let phaseOne: { placements: readonly PopulatedClipInfo[]; cuePoints: readonly CuePointInfo[] };
+  try {
+    phaseOne = await writeCreatePhase(bridge, plan, prepared);
+  } catch (error) {
+    if (didClear) {
+      throw new SessionToSongPartialBuildError(
+        'create',
+        plan.placements.length,
+        plan.cuePoints.length,
+        1,
+        error,
+      );
+    }
+    throw error;
+  }
+  try {
+    await writePhaseTwo(bridge, prepared, phaseOne.placements, phaseOne.cuePoints, plan);
+  } catch (error) {
+    throw new SessionToSongPartialBuildError(
+      'populate',
+      plan.placements.length,
+      plan.cuePoints.length,
+      didClear ? 2 : 1,
+      error,
+    );
+  }
+  return {
+    placementCount: plan.placements.length,
+    cuePointCount: plan.cuePoints.length,
+    undoStepCount: didClear ? 3 : 2,
+  };
 }
