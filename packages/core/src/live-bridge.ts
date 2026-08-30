@@ -163,6 +163,8 @@ export interface LiveBridge {
   /**
    * Replace the notes of a MIDI clip wholesale (read-map-assign). Pitches and
    * velocities are clamped to 0..127 to match Live rejecting out-of-range values.
+   * Every numeric note field must be finite; starts must be non-negative, durations
+   * strictly positive, and probability within 0..1.
    * Resolves to `{ id, name, count }` with the resulting note count. Backs
    * `live_set_notes`.
    *
@@ -189,7 +191,7 @@ export interface LiveBridge {
    *
    * @throws BridgeError `STALE_REFERENCE` if the slot is gone, `WRONG_TYPE` if the id
    *   is not a clip slot or the slot is on an audio track, `SDK_REJECTED` if the slot
-   *   is already occupied, `BAD_INPUT` if `lengthBeats` is not > 0.
+   *   is already occupied, `BAD_INPUT` if `lengthBeats` is non-finite or not > 0.
    */
   createMidiClip(slotId: ClipSlotId, lengthBeats: number): Promise<ClipInfo>;
 
@@ -235,7 +237,7 @@ export interface LiveBridge {
    *
    * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if it is
    *   not a MIDI track, `BAD_INPUT` if `startBeat` is negative or `lengthBeats` is
-   *   not > 0.
+   *   non-finite or not > 0.
    */
   createArrangementMidiClip(
     trackId: TrackId,
@@ -252,7 +254,7 @@ export interface LiveBridge {
    *
    * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if it is
    *   not an audio track, `BAD_INPUT` if `startTime` is negative, `duration` is not
-   *   > 0, or `filePath` is empty.
+   *   non-finite or not > 0, or `filePath` is empty.
    */
   createArrangementAudioClip(trackId: TrackId, args: CreateAudioClipArgs): Promise<ClipInfo>;
 
@@ -263,7 +265,8 @@ export interface LiveBridge {
    * Session-to-Song cleaning the target range before it writes the new arrangement.
    *
    * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if the id
-   *   is not a track, `BAD_INPUT` if `endBeat <= startBeat` or either is negative.
+   *   is not a track, `BAD_INPUT` if a bound is non-finite, either is negative, or
+   *   `endBeat <= startBeat`.
    */
   clearClipsInRange(trackId: TrackId, startBeat: number, endBeat: number): Promise<void>;
 
@@ -310,7 +313,8 @@ export interface LiveBridge {
    * `live_render_track`.
    *
    * @throws BridgeError `STALE_REFERENCE` if the track is gone, `WRONG_TYPE` if the id
-   *   is not a track, `BAD_INPUT` if `endBeat <= startBeat`, `UNSUPPORTED` /
+   *   is not a track, `BAD_INPUT` if a bound is non-finite, `startBeat` is negative,
+   *   or `endBeat <= startBeat`, `UNSUPPORTED` /
    *   `SDK_REJECTED` if the host cannot render this track.
    */
   renderTrack(trackId: TrackId, startBeat: number, endBeat: number): Promise<RenderResult>;

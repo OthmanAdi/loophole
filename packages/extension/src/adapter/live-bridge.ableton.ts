@@ -53,6 +53,7 @@ import {
   type Track,
 } from '@ableton-extensions/sdk';
 import {
+  assertValidNote,
   badInput,
   type ClipId,
   type ClipInfo,
@@ -344,6 +345,9 @@ export class AbletonLiveBridge implements LiveBridge {
   }
 
   async setNotes(id: ClipId, notes: readonly NoteDTO[]): Promise<SetNotesResult> {
+    for (const note of notes) {
+      assertValidNote(note);
+    }
     const descriptions = notes.map(noteToDescription);
     await this.#write(() => {
       const resolved = this.#resolver.resolveClip(id);
@@ -380,8 +384,8 @@ export class AbletonLiveBridge implements LiveBridge {
   }
 
   async createMidiClip(id: ClipSlotId, lengthBeats: number): Promise<ClipInfo> {
-    if (!(lengthBeats > 0)) {
-      throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
+    if (!Number.isFinite(lengthBeats) || !(lengthBeats > 0)) {
+      throw badInput(`Clip length ${String(lengthBeats)} must be a finite number > 0.`);
     }
     const created = await this.#write(() => {
       const { track, slot } = this.#resolver.resolveSlot(id);
@@ -444,8 +448,8 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
       throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
     }
-    if (!(lengthBeats > 0)) {
-      throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
+    if (!Number.isFinite(lengthBeats) || !(lengthBeats > 0)) {
+      throw badInput(`Clip length ${String(lengthBeats)} must be a finite number > 0.`);
     }
     const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'midi');
@@ -463,8 +467,8 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!(args.startTime >= 0) || !Number.isFinite(args.startTime)) {
       throw badInput(`startTime ${String(args.startTime)} must be a non-negative number.`);
     }
-    if (!(args.duration > 0)) {
-      throw badInput(`duration ${String(args.duration)} must be > 0.`);
+    if (!Number.isFinite(args.duration) || !(args.duration > 0)) {
+      throw badInput(`duration ${String(args.duration)} must be a finite number > 0.`);
     }
     const created = await this.#write(() => {
       const { track } = this.#resolver.resolveTrackOfKind(id, 'audio');
@@ -484,7 +488,7 @@ export class AbletonLiveBridge implements LiveBridge {
     if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
       throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
     }
-    if (!(endBeat > startBeat)) {
+    if (!Number.isFinite(endBeat) || !(endBeat > startBeat)) {
       throw badInput(
         `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
       );
@@ -579,7 +583,10 @@ export class AbletonLiveBridge implements LiveBridge {
     // transaction (nothing to undo). It is queued so the I/O does not interleave with
     // structural writes (02_BRIDGE_SPEC §5 tool 12). renderPreFxAudio takes an
     // AudioTrack only.
-    if (!(endBeat > startBeat)) {
+    if (!Number.isFinite(startBeat) || startBeat < 0) {
+      throw badInput(`startBeat ${String(startBeat)} must be a finite non-negative number.`);
+    }
+    if (!Number.isFinite(endBeat) || !(endBeat > startBeat)) {
       throw badInput(
         `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
       );

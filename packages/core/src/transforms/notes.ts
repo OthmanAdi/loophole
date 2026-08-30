@@ -8,6 +8,7 @@
  */
 
 import type { NoteDTO } from '../dtos.js';
+import { badInput } from '../errors.js';
 
 /** MIDI pitch bounds; Live rejects writes outside this range. */
 export const MIN_PITCH = 0;
@@ -17,8 +18,61 @@ export const MAX_PITCH = 127;
 export const MIN_VELOCITY = 0;
 export const MAX_VELOCITY = 127;
 
+/**
+ * Reject a note whose numeric fields cannot be represented safely by the Live note
+ * API. Finite out-of-range pitch and velocity values remain valid here because the
+ * documented write policy is to clamp them; only non-finite values and invalid note
+ * geometry are rejected.
+ */
+export function assertValidNote(note: NoteDTO): void {
+  assertFinite(note.pitch, 'Note pitch');
+  assertFiniteAtLeast(note.startTime, 0, 'Note startTime');
+  assertFiniteGreaterThan(note.duration, 0, 'Note duration');
+  if (note.velocity !== undefined) assertFinite(note.velocity, 'Note velocity');
+  if (note.releaseVelocity !== undefined)
+    assertFinite(note.releaseVelocity, 'Note releaseVelocity');
+  if (note.probability !== undefined) {
+    if (!Number.isFinite(note.probability) || note.probability < 0 || note.probability > 1) {
+      throw badInput(
+        `Note probability ${String(note.probability)} must be finite and within 0..1.`,
+      );
+    }
+  }
+  // Live's supported velocity-deviation surface is signed, so only reject values
+  // that cannot be represented safely; do not impose a new musical range here.
+  if (note.velocityDeviation !== undefined) {
+    assertFinite(note.velocityDeviation, 'Note velocityDeviation');
+  }
+}
+
+/** Reject every invalid note before a write or transform can partially process it. */
+export function assertValidNotes(notes: readonly NoteDTO[]): void {
+  for (const note of notes) {
+    assertValidNote(note);
+  }
+}
+
+function assertFinite(value: number, label: string): void {
+  if (!Number.isFinite(value)) {
+    throw badInput(`${label} ${String(value)} must be finite.`);
+  }
+}
+
+function assertFiniteAtLeast(value: number, minimum: number, label: string): void {
+  if (!Number.isFinite(value) || value < minimum) {
+    throw badInput(`${label} ${String(value)} must be a finite number >= ${String(minimum)}.`);
+  }
+}
+
+function assertFiniteGreaterThan(value: number, minimum: number, label: string): void {
+  if (!Number.isFinite(value) || !(value > minimum)) {
+    throw badInput(`${label} ${String(value)} must be a finite number > ${String(minimum)}.`);
+  }
+}
+
 /** Clamp a pitch to the valid MIDI range 0..127. */
 export function clampPitch(pitch: number): number {
+  assertFinite(pitch, 'MIDI pitch');
   if (pitch < MIN_PITCH) {
     return MIN_PITCH;
   }
@@ -39,6 +93,7 @@ export function clampPitch(pitch: number): number {
  * Live would reject it.
  */
 export function clampVelocity(velocity: number): number {
+  assertFinite(velocity, 'MIDI velocity');
   if (velocity < MIN_VELOCITY) {
     return MIN_VELOCITY;
   }
@@ -73,6 +128,8 @@ export function mapClipNotes(
  * preserved.
  */
 export function transposeNotes(notes: readonly NoteDTO[], semitones: number): NoteDTO[] {
+  assertValidNotes(notes);
+  assertFinite(semitones, 'Transpose semitones');
   const shift = Math.trunc(semitones);
   return mapClipNotes(notes, (note) => ({
     ...note,
@@ -94,11 +151,17 @@ export function humanizeTiming(
   amountBeats: number,
   rng?: () => number,
 ): NoteDTO[] {
+  assertValidNotes(notes);
+  assertFiniteAtLeast(amountBeats, 0, 'Humanize amountBeats');
   if (rng === undefined || amountBeats <= 0) {
     return mapClipNotes(notes, (note) => ({ ...note }));
   }
   return mapClipNotes(notes, (note) => {
-    const jitter = (rng() * 2 - 1) * amountBeats;
+    const draw = rng();
+    if (!Number.isFinite(draw) || draw < 0 || draw > 1) {
+      throw badInput(`Humanize RNG draw ${String(draw)} must be finite and within 0..1.`);
+    }
+    const jitter = (draw * 2 - 1) * amountBeats;
     const startTime = Math.max(0, note.startTime + jitter);
     return { ...note, startTime };
   });

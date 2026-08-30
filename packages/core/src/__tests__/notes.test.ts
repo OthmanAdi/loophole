@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { NoteDTO } from '../dtos.js';
 import {
+  assertValidNote,
   clampPitch,
   clampVelocity,
   humanizeTiming,
@@ -31,6 +32,12 @@ describe('clampPitch', () => {
   it('passes valid pitches through', () => {
     expect(clampPitch(64)).toBe(64);
   });
+
+  it('rejects non-finite pitches before clamping', () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => clampPitch(value)).toThrow('finite');
+    }
+  });
 });
 
 describe('clampVelocity', () => {
@@ -42,6 +49,35 @@ describe('clampVelocity', () => {
   it('passes valid velocities through without rounding', () => {
     expect(clampVelocity(100)).toBe(100);
     expect(clampVelocity(63.5)).toBe(63.5);
+  });
+
+  it('rejects non-finite velocities before clamping', () => {
+    for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      expect(() => clampVelocity(value)).toThrow('finite');
+    }
+  });
+});
+
+describe('assertValidNote', () => {
+  const valid: NoteDTO = { pitch: 60, startTime: 0, duration: 1, velocity: 100 };
+
+  it('allows finite out-of-range pitch and velocity values for the write-time clamp', () => {
+    expect(() => assertValidNote({ ...valid, pitch: 200, velocity: -1 })).not.toThrow();
+  });
+
+  it('rejects invalid numeric note fields', () => {
+    const invalid: readonly NoteDTO[] = [
+      { ...valid, pitch: Number.NaN },
+      { ...valid, velocity: Number.POSITIVE_INFINITY },
+      { ...valid, releaseVelocity: Number.NEGATIVE_INFINITY },
+      { ...valid, startTime: -0.01 },
+      { ...valid, duration: 0 },
+      { ...valid, probability: 1.01 },
+      { ...valid, velocityDeviation: Number.NaN },
+    ];
+    for (const note of invalid) {
+      expect(() => assertValidNote(note)).toThrow();
+    }
   });
 });
 
@@ -136,5 +172,13 @@ describe('humanizeTiming', () => {
   it('does not mutate its input', () => {
     humanizeTiming(input, 0.25, () => 1);
     expect(input[0]?.startTime).toBe(1);
+  });
+
+  it('rejects invalid source geometry, amount, and RNG draws', () => {
+    expect(() =>
+      humanizeTiming([{ pitch: 60, startTime: 0, duration: 0 }], 0.25, () => 0.5),
+    ).toThrow();
+    expect(() => humanizeTiming(input, Number.POSITIVE_INFINITY, () => 0.5)).toThrow();
+    expect(() => humanizeTiming(input, 0.25, () => Number.NaN)).toThrow();
   });
 });

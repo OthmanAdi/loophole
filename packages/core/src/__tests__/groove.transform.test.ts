@@ -287,3 +287,46 @@ describe('humanize: living pattern writes probability / velocityDeviation', () =
     expect(out[0]?.velocityDeviation).toBeUndefined();
   });
 });
+
+describe('humanize: numeric-domain guards', () => {
+  const note: NoteDTO = { pitch: 60, startTime: 0, duration: 1, velocity: 100 };
+  const opts: HumanizeOpts = {
+    strength: 0.5,
+    doTiming: true,
+    doVelocity: true,
+    doDuration: true,
+  };
+
+  it('rejects non-finite or out-of-range controls before processing notes', () => {
+    for (const invalid of [
+      { ...opts, strength: Number.NaN },
+      { ...opts, strength: Number.POSITIVE_INFINITY },
+      { ...opts, strength: -0.1 },
+      { ...opts, swing: Number.NEGATIVE_INFINITY },
+      { ...opts, swing: 1.1 },
+    ]) {
+      expect(() => humanize([note], invalid, GRID_16, seqRng([0.5]))).toThrow();
+    }
+  });
+
+  it('rejects malformed source notes and invalid RNG draws', () => {
+    expect(() => humanize([{ ...note, duration: 0 }], opts, GRID_16, seqRng([0.5]))).toThrow();
+    for (const draw of [Number.NaN, Number.POSITIVE_INFINITY, -0.1, 1.1]) {
+      expect(() => humanize([note], opts, GRID_16, () => draw)).toThrow();
+    }
+  });
+
+  it('keeps every generated numeric note field valid at both allowed RNG endpoints', () => {
+    const out = humanize([note], { ...opts, swing: 1, living: true }, GRID_16, seqRng([0, 1]));
+    const generated = out[0]!;
+    expect(Number.isFinite(generated.startTime)).toBe(true);
+    expect(generated.startTime).toBeGreaterThanOrEqual(0);
+    expect(Number.isFinite(generated.duration)).toBe(true);
+    expect(generated.duration).toBeGreaterThan(0);
+    expect(generated.velocity).toBeGreaterThanOrEqual(1);
+    expect(generated.velocity).toBeLessThanOrEqual(127);
+    expect(generated.probability).toBeGreaterThanOrEqual(0);
+    expect(generated.probability).toBeLessThanOrEqual(1);
+    expect(Number.isFinite(generated.velocityDeviation ?? Number.NaN)).toBe(true);
+  });
+});

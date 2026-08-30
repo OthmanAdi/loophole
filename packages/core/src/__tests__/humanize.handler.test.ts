@@ -98,7 +98,7 @@ describe('runHumanize: read -> humanize -> write round-trip on the fake', () => 
     expect(bridge.transactionCount).toBe(1);
   });
 
-  it('strength 0 writes the notes back unchanged but still as one undo', async () => {
+  it('strength 0 leaves the notes unchanged without creating an undo step', async () => {
     const bridge = FakeLiveBridge.withOneMidiClip(SEED_NOTES);
     await runHumanize(
       bridge,
@@ -110,7 +110,7 @@ describe('runHumanize: read -> humanize -> write round-trip on the fake', () => 
     );
     // Identity transform: the stored notes equal the seed (the fake echoes them back).
     expect(bridge.firstClip().notes).toEqual(SEED_NOTES);
-    expect(bridge.transactionCount).toBe(1);
+    expect(bridge.transactionCount).toBe(0);
   });
 
   it('reads the grid from the overview (a 1/16 fixture bounds the timing nudge)', async () => {
@@ -145,6 +145,76 @@ describe('runHumanize: read -> humanize -> write round-trip on the fake', () => 
 });
 
 describe('runHumanize: errors propagate and roll back', () => {
+  it('rejects invalid options before opening a transaction or writing notes', async () => {
+    const bridge = FakeLiveBridge.withOneMidiClip(SEED_NOTES);
+    const before = bridge.getNotes(bridge.firstClipId);
+    await expect(
+      runHumanize(
+        bridge,
+        {
+          clipIds: [bridge.firstClipId],
+          opts: {
+            strength: Number.POSITIVE_INFINITY,
+            doTiming: true,
+            doVelocity: true,
+            doDuration: true,
+          },
+        },
+        seqRng([0.5]),
+      ),
+    ).rejects.toSatisfy((e: unknown) => isBridgeErrorOfCode(e, 'BAD_INPUT'));
+    expect(bridge.getNotes(bridge.firstClipId)).toEqual(before);
+    expect(bridge.transactionCount).toBe(0);
+  });
+
+  it('rejects invalid RNG draws for an empty selection before returning a no-op', async () => {
+    for (const draw of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -0.1,
+      1.1,
+    ]) {
+      const bridge = FakeLiveBridge.withOneMidiClip(SEED_NOTES);
+      await expect(
+        runHumanize(
+          bridge,
+          {
+            clipIds: [],
+            opts: { strength: 0, doTiming: false, doVelocity: false, doDuration: false },
+          },
+          () => draw,
+        ),
+      ).rejects.toSatisfy((e: unknown) => isBridgeErrorOfCode(e, 'BAD_INPUT'));
+      expect(bridge.firstClip().notes).toEqual(SEED_NOTES);
+      expect(bridge.transactionCount).toBe(0);
+    }
+  });
+
+  it('rejects invalid RNG draws for strength 0 before returning a no-op', async () => {
+    for (const draw of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -0.1,
+      1.1,
+    ]) {
+      const bridge = FakeLiveBridge.withOneMidiClip(SEED_NOTES);
+      await expect(
+        runHumanize(
+          bridge,
+          {
+            clipIds: [bridge.firstClipId],
+            opts: { strength: 0, doTiming: false, doVelocity: false, doDuration: false },
+          },
+          () => draw,
+        ),
+      ).rejects.toSatisfy((e: unknown) => isBridgeErrorOfCode(e, 'BAD_INPUT'));
+      expect(bridge.firstClip().notes).toEqual(SEED_NOTES);
+      expect(bridge.transactionCount).toBe(0);
+    }
+  });
+
   it('throws WRONG_TYPE for a non-MIDI clip and commits no undo step', async () => {
     // The seeded Set's Vocals track (2) holds one AUDIO arrangement clip.
     const bridge = FakeLiveBridge.seeded();

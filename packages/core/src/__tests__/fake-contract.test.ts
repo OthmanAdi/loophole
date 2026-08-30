@@ -127,6 +127,14 @@ describe('FakeLiveBridge: mutators return post-write DTOs', () => {
     expect(bridge.getNotes(clip.id as ClipId)).toEqual([]);
   });
 
+  it('rejects non-finite session clip lengths without committing an undo step', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    await expect(
+      bridge.createMidiClip(slotAt(bridge, 0, 1), Number.POSITIVE_INFINITY),
+    ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
+    expect(bridge.transactionCount).toBe(0);
+  });
+
   it('insertDevice returns writable parameter refs', async () => {
     const bridge = FakeLiveBridge.seeded();
     const device = await bridge.insertDevice(trackAt(bridge, 1), 'Reverb', 0);
@@ -159,6 +167,23 @@ describe('FakeLiveBridge: mutators return post-write DTOs', () => {
       isBridgeErrorOfCode(error, 'WRONG_TYPE'),
     );
   });
+
+  it('rejects invalid render geometry without an undo step', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    const audio = trackAt(bridge, 2);
+    const invalidRanges: readonly (readonly [number, number])[] = [
+      [-1, 8],
+      [Number.NaN, 8],
+      [0, Number.POSITIVE_INFINITY],
+      [0, Number.NaN],
+    ];
+    for (const [start, end] of invalidRanges) {
+      await expect(bridge.renderTrack(audio, start, end)).rejects.toSatisfy((error: unknown) =>
+        isBridgeErrorOfCode(error, 'BAD_INPUT'),
+      );
+    }
+    expect(bridge.transactionCount).toBe(0);
+  });
 });
 
 describe('FakeLiveBridge: MIDI snapshots and error contracts', () => {
@@ -184,6 +209,46 @@ describe('FakeLiveBridge: MIDI snapshots and error contracts', () => {
     ]);
     expect(input[0]?.pitch).toBe(200);
     expect(input[0]?.velocity).toBe(999);
+  });
+
+  it('rejects invalid note numbers without writing or committing an undo step', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    const id = clipAt(bridge, 0, 0);
+    const before = bridge.getNotes(id);
+    const invalid: readonly NoteDTO[] = [
+      { pitch: Number.NaN, startTime: 0, duration: 1 },
+      { pitch: 60, startTime: Number.NEGATIVE_INFINITY, duration: 1 },
+      { pitch: 60, startTime: 0, duration: 0 },
+      { pitch: 60, startTime: 0, duration: Number.POSITIVE_INFINITY },
+      { pitch: 60, startTime: 0, duration: 1, velocity: Number.NaN },
+      { pitch: 60, startTime: 0, duration: 1, releaseVelocity: Number.POSITIVE_INFINITY },
+      { pitch: 60, startTime: 0, duration: 1, probability: -0.01 },
+      { pitch: 60, startTime: 0, duration: 1, velocityDeviation: Number.NEGATIVE_INFINITY },
+    ];
+
+    for (const note of invalid) {
+      await expect(bridge.setNotes(id, [note])).rejects.toSatisfy((error: unknown) =>
+        isBridgeErrorOfCode(error, 'BAD_INPUT'),
+      );
+      expect(bridge.getNotes(id)).toEqual(before);
+      expect(bridge.transactionCount).toBe(0);
+    }
+  });
+
+  it('rolls back prior note writes when an invalid note fails inside a transaction', async () => {
+    const bridge = FakeLiveBridge.seeded();
+    const id = clipAt(bridge, 0, 0);
+    const before = bridge.getNotes(id);
+    await expect(
+      bridge.transaction(() =>
+        Promise.all([
+          bridge.setNotes(id, [{ pitch: 72, startTime: 0, duration: 1 }]),
+          bridge.setNotes(id, [{ pitch: 60, startTime: 0, duration: Number.NaN }]),
+        ]),
+      ),
+    ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
+    expect(bridge.getNotes(id)).toEqual(before);
+    expect(bridge.transactionCount).toBe(0);
   });
 
   it('rejects unknown, empty-slot, and non-MIDI clip references appropriately', async () => {

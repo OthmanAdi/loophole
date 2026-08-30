@@ -22,7 +22,8 @@
  */
 
 import type { GridInfo, HumanizeOpts, NoteDTO } from '../dtos.js';
-import { mapClipNotes } from './notes.js';
+import { badInput } from '../errors.js';
+import { assertValidNote, assertValidNotes, mapClipNotes } from './notes.js';
 
 /** Velocity floor for a humanised note: 1, not 0 (a 0-velocity note is silent). */
 export const MIN_HUMANIZED_VELOCITY = 1;
@@ -82,6 +83,39 @@ function clampHumanizedVelocity(velocity: number): number {
   return velocity;
 }
 
+/** Reject malformed Humanize controls before a transform can create unsafe note data. */
+export function assertValidHumanizeOpts(opts: HumanizeOpts): void {
+  assertUnitInterval(opts.strength, 'Humanize strength');
+  if (opts.swing !== undefined) {
+    assertUnitInterval(opts.swing, 'Humanize swing');
+  }
+}
+
+function assertUnitInterval(value: number, label: string): void {
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw badInput(`${label} ${String(value)} must be finite and within 0..1.`);
+  }
+}
+
+/** Validate one injected Humanize PRNG draw without consuming any additional draws. */
+export function assertValidHumanizeRngDraw(draw: number): void {
+  assertUnitInterval(draw, 'Humanize RNG draw');
+}
+
+function drawRng(rng: () => number): number {
+  const draw = rng();
+  assertValidHumanizeRngDraw(draw);
+  return draw;
+}
+
+function assertValidGrid(grid: GridInfo): void {
+  if (!Number.isFinite(grid.beatsPerCell) || !(grid.beatsPerCell > 0)) {
+    throw badInput(
+      `Humanize grid beatsPerCell ${String(grid.beatsPerCell)} must be a finite number > 0.`,
+    );
+  }
+}
+
 /**
  * True for an off-beat note position, i.e. one that does not sit on a beat boundary.
  * Swing delays these. "Off-beat" is judged against the grid cell: a note whose start
@@ -135,6 +169,9 @@ export function humanize(
   grid: GridInfo,
   rng: () => number,
 ): NoteDTO[] {
+  assertValidNotes(notes);
+  assertValidHumanizeOpts(opts);
+  assertValidGrid(grid);
   // strength 0 (or below) is an identity transform: a fresh structural copy, with no
   // random draws, so the result is byte-for-byte the input regardless of the gates,
   // swing, or living flag. Mirrors the humanizeTiming precedent in notes.ts.
@@ -165,18 +202,18 @@ export function humanize(
     } = { ...next };
 
     if (opts.doTiming) {
-      const factor = rng() * 2 - 1;
+      const factor = drawRng(rng) * 2 - 1;
       out.startTime = note.startTime + factor * maxTimingOffset;
     }
 
     if (opts.doVelocity) {
-      const factor = rng() * 2 - 1;
+      const factor = drawRng(rng) * 2 - 1;
       const base = note.velocity ?? DEFAULT_VELOCITY;
       out.velocity = clampHumanizedVelocity(base + factor * strength * 64);
     }
 
     if (opts.doDuration) {
-      const factor = rng() * 2 - 1;
+      const factor = drawRng(rng) * 2 - 1;
       // Scale the duration by up to ±50% at full strength; never collapse to <= 0.
       const scaled = note.duration * (1 + factor * strength * 0.5);
       out.duration = scaled > 0 ? scaled : note.duration;
@@ -195,12 +232,13 @@ export function humanize(
     // Living pattern: write probability / velocityDeviation for a less mechanical feel
     // (§2(b)). Deterministic and scaled by strength so a fixed seed stays assertable.
     if (opts.living === true) {
-      const probDraw = rng();
+      const probDraw = drawRng(rng);
       // Keep probability high (notes still mostly play): 1 down to ~0.7 at full strength.
       out.probability = 1 - probDraw * strength * 0.3;
-      out.velocityDeviation = rng() * strength * 16;
+      out.velocityDeviation = drawRng(rng) * strength * 16;
     }
 
+    assertValidNote(out);
     return out;
   });
 }

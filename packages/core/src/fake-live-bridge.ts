@@ -56,7 +56,7 @@ import {
   type SessionReference,
   type SessionReferenceKind,
 } from './references.js';
-import { clampPitch, clampVelocity } from './transforms/notes.js';
+import { assertValidNote, clampPitch, clampVelocity } from './transforms/notes.js';
 
 // --- internal mutable model (never leaks out of this file) ---
 
@@ -283,6 +283,7 @@ function cloneSong(song: SongModel): SongModel {
 
 /** Build a NoteModel from an incoming DTO, clamping pitch/velocity and dropping absent keys. */
 function noteFromDTO(dto: NoteDTO): NoteModel {
+  assertValidNote(dto);
   const model: NoteModel = {
     pitch: clampPitch(dto.pitch),
     startTime: dto.startTime,
@@ -1153,8 +1154,8 @@ export class FakeLiveBridge implements LiveBridge {
       if (track.kind !== 'midi') {
         throw wrongType(id, 'MIDI track clip slot');
       }
-      if (!(lengthBeats > 0)) {
-        throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
+      if (!Number.isFinite(lengthBeats) || !(lengthBeats > 0)) {
+        throw badInput(`Clip length ${String(lengthBeats)} must be a finite number > 0.`);
       }
       if (slot.clip !== null) {
         throw sdkRejected(
@@ -1227,8 +1228,8 @@ export class FakeLiveBridge implements LiveBridge {
       if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
         throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
       }
-      if (!(lengthBeats > 0)) {
-        throw badInput(`Clip length ${String(lengthBeats)} must be > 0.`);
+      if (!Number.isFinite(lengthBeats) || !(lengthBeats > 0)) {
+        throw badInput(`Clip length ${String(lengthBeats)} must be a finite number > 0.`);
       }
       const clip: ClipModel = {
         isMidi: true,
@@ -1260,8 +1261,8 @@ export class FakeLiveBridge implements LiveBridge {
       if (!(args.startTime >= 0) || !Number.isFinite(args.startTime)) {
         throw badInput(`startTime ${String(args.startTime)} must be a non-negative number.`);
       }
-      if (!(args.duration > 0)) {
-        throw badInput(`duration ${String(args.duration)} must be > 0.`);
+      if (!Number.isFinite(args.duration) || !(args.duration > 0)) {
+        throw badInput(`duration ${String(args.duration)} must be a finite number > 0.`);
       }
       const clip: ClipModel = {
         isMidi: false,
@@ -1288,7 +1289,7 @@ export class FakeLiveBridge implements LiveBridge {
       if (!(startBeat >= 0) || !Number.isFinite(startBeat)) {
         throw badInput(`startBeat ${String(startBeat)} must be a non-negative number.`);
       }
-      if (!(endBeat > startBeat)) {
+      if (!Number.isFinite(endBeat) || !(endBeat > startBeat)) {
         throw badInput(
           `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
         );
@@ -1368,7 +1369,10 @@ export class FakeLiveBridge implements LiveBridge {
         'renderPreFxAudio renders audio tracks only; this is not an audio track.',
       );
     }
-    if (!(endBeat > startBeat)) {
+    if (!Number.isFinite(startBeat) || startBeat < 0) {
+      throw badInput(`startBeat ${String(startBeat)} must be a finite non-negative number.`);
+    }
+    if (!Number.isFinite(endBeat) || !(endBeat > startBeat)) {
       throw badInput(
         `endBeat ${String(endBeat)} must be greater than startBeat ${String(startBeat)}.`,
       );

@@ -19,7 +19,12 @@
 import type { HumanizeOpts, NoteDTO } from '../dtos.js';
 import type { ClipId } from '../ids.js';
 import type { LiveBridge } from '../live-bridge.js';
-import { gridInfoFrom, humanize } from '../transforms/groove.js';
+import {
+  assertValidHumanizeOpts,
+  assertValidHumanizeRngDraw,
+  gridInfoFrom,
+  humanize,
+} from '../transforms/groove.js';
 
 /** Arguments for {@link runHumanize}: the clips to humanise and the modal options. */
 export interface HumanizeArgs {
@@ -55,9 +60,30 @@ export async function runHumanize(
   rng: () => number,
 ): Promise<{ clipCount: number }> {
   const { clipIds, opts } = args;
+  // Validate before the empty-selection early return and, importantly, before a
+  // transaction opens. Direct callers are not limited to the modal's slider bounds.
+  assertValidHumanizeOpts(opts);
+  // Preflight even a no-op so a broken injected PRNG cannot be hidden by an empty
+  // selection or zero strength. Replay the checked draw to the transform so this
+  // guard does not shift any deterministic sequence's documented draw order.
+  const firstDraw = rng();
+  assertValidHumanizeRngDraw(firstDraw);
+  let firstDrawPending = true;
+  const replayingRng = (): number => {
+    if (firstDrawPending) {
+      firstDrawPending = false;
+      return firstDraw;
+    }
+    return rng();
+  };
   // A no-op (no clips selected) commits no transaction: no undo step.
   if (clipIds.length === 0) {
     return { clipCount: 0 };
+  }
+  // Strength zero is an exact identity transform. Avoid a redundant full notes write
+  // and undo entry after the RNG preflight above has established valid invocation.
+  if (opts.strength === 0) {
+    return { clipCount: clipIds.length };
   }
 
   // Read + derive the grid before opening the transaction (a read needs no undo step).
@@ -70,7 +96,12 @@ export async function runHumanize(
   await bridge.transaction(() =>
     Promise.all(
       clipIds.map((id) => {
-        const humanized: readonly NoteDTO[] = humanize([...bridge.getNotes(id)], opts, grid, rng);
+        const humanized: readonly NoteDTO[] = humanize(
+          [...bridge.getNotes(id)],
+          opts,
+          grid,
+          replayingRng,
+        );
         return bridge.setNotes(id, humanized);
       }),
     ),

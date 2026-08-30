@@ -199,6 +199,10 @@ describe('arrangement clip creation and clearing', () => {
     await expect(bridge.createArrangementMidiClip(trackAt(bridge, 0), -1, 4)).rejects.toSatisfy(
       (error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'),
     );
+    await expect(
+      bridge.createArrangementMidiClip(trackAt(bridge, 0), 0, Number.POSITIVE_INFINITY),
+    ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
+    expect(bridge.transactionCount).toBe(0);
   });
   it('creates audio clips with their source file and validates args', async () => {
     const bridge = FakeLiveBridge.seeded();
@@ -225,6 +229,12 @@ describe('arrangement clip creation and clearing', () => {
     ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
     await expect(
       bridge.createArrangementAudioClip(trackAt(bridge, 2), { ...AUDIO_ARGS, duration: 0 }),
+    ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
+    await expect(
+      bridge.createArrangementAudioClip(trackAt(bridge, 2), {
+        ...AUDIO_ARGS,
+        duration: Number.POSITIVE_INFINITY,
+      }),
     ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
   });
   it('clears inside clips, truncates overlaps, preserves outside clips, and validates ranges', async () => {
@@ -256,6 +266,9 @@ describe('arrangement clip creation and clearing', () => {
     await expect(untouched.clearClipsInRange(trackAt(untouched, 1), 8, 4)).rejects.toSatisfy(
       (error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'),
     );
+    await expect(
+      untouched.clearClipsInRange(trackAt(untouched, 1), 0, Number.POSITIVE_INFINITY),
+    ).rejects.toSatisfy((error: unknown) => isBridgeErrorOfCode(error, 'BAD_INPUT'));
   });
 });
 

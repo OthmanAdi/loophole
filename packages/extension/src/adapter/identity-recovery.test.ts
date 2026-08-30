@@ -69,6 +69,44 @@ function trackWithMixer(id) {
 }
 
 describe('identity-based recovery', () => {
+  it('rejects invalid note and timeline numbers before queueing an SDK operation', async () => {
+    let transactions = 0;
+    const bridgeContext = {
+      application: { song: { tracks: [], scenes: [], cuePoints: [] } },
+      withinTransaction: (operation) => {
+        transactions += 1;
+        return operation();
+      },
+      resources: { renderPreFxAudio: async () => '' },
+    };
+    const bridge = new AbletonLiveBridge(bridgeContext, new ReferenceService(bridgeContext));
+    const unknown = 'lhref_trk_0123456789abcdef';
+
+    await expect(
+      bridge.setNotes(unknown, [{ pitch: Number.NaN, startTime: 0, duration: 1 }]),
+    ).rejects.toMatchObject({ code: 'BAD_INPUT' });
+    await expect(bridge.createMidiClip(unknown, Number.POSITIVE_INFINITY)).rejects.toMatchObject({
+      code: 'BAD_INPUT',
+    });
+    await expect(
+      bridge.createArrangementMidiClip(unknown, 0, Number.POSITIVE_INFINITY),
+    ).rejects.toMatchObject({ code: 'BAD_INPUT' });
+    await expect(
+      bridge.createArrangementAudioClip(unknown, {
+        filePath: '/audio/loop.wav',
+        startTime: 0,
+        duration: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toMatchObject({ code: 'BAD_INPUT' });
+    await expect(
+      bridge.clearClipsInRange(unknown, 0, Number.POSITIVE_INFINITY),
+    ).rejects.toMatchObject({
+      code: 'BAD_INPUT',
+    });
+    await expect(bridge.renderTrack(unknown, -1, 4)).rejects.toMatchObject({ code: 'BAD_INPUT' });
+    expect(transactions).toBe(0);
+  });
+
   it('keeps the exact same-id object through resolver track, slot, clip, and device recovery', () => {
     const firstTrack = track(1n);
     const secondTrack = track(1n);
