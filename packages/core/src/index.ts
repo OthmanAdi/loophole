@@ -113,6 +113,8 @@ export type { BridgeErrorCode } from './errors.js';
 
 // Pure domain transforms.
 export {
+  assertValidNote,
+  assertValidNotes,
   clampPitch,
   clampVelocity,
   humanizeTiming,
@@ -133,6 +135,7 @@ export type { SnapResult } from './transforms/scale.js';
 
 // Humanize / Groove Sculptor (W2). `humanize` takes an INJECTED rng for determinism.
 export {
+  assertValidHumanizeOpts,
   gridInfoFrom,
   humanize,
   MAX_HUMANIZED_VELOCITY,
