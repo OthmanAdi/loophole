@@ -5,17 +5,48 @@ requires the licensed SDK, a packaged `.ablx`, or a running Live instance. Do no
 complete because an earlier gate passed. Record the exact commit, commands, machine, Live
 build, and artifacts for every completed run.
 
-## Current gate status
+## Recorded gate status
 
-| Gate            | Current status                 | Required evidence                                                                                                                         |
-| --------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `CI_SAFE`       | [ ] `PENDING_FINAL_VALIDATION` | Frozen install, typecheck, lint, format check, build, core tests, and MCP tests on the commit being evaluated.                            |
-| `SDK_TYPECHECK` | [ ] `NOT_RUN`                  | Genuine SDK declarations installed locally, exact SDK version recorded, and a clean `tsconfig.live.json` typecheck transcript.            |
-| `PACKAGE_ABLX`  | [ ] `NOT_RUN`                  | Successful `package:live` transcript, `.ablx` filename, size, SHA-256, manifest contents, SDK/CLI versions, and clean source-tree status. |
-| `LIVE_RUNTIME`  | [ ] `NOT_RUN_NO_LIVE`          | Package load, menus, bridge discovery, authenticated client read/write, undo history, and complete logs from the exact Live run.          |
+| Gate            | Current status        | Required evidence                                                                                                                         |
+| --------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `CI_SAFE`       | [x] `PASS_AT_86EAE1C` | Frozen install, typecheck, lint, format check, build, tests, and packed MCP consumer proof on the commit being evaluated.                 |
+| `SDK_TYPECHECK` | [x] `PASS_AT_86EAE1C` | Genuine licensee-local SDK declarations, exact SDK version and hashes, and a clean `tsconfig.live.json` typecheck transcript.             |
+| `PACKAGE_ABLX`  | [ ] `NOT_RUN`         | Successful `package:live` transcript, `.ablx` filename, size, SHA-256, manifest contents, SDK/CLI versions, and clean source-tree status. |
+| `LIVE_RUNTIME`  | [ ] `NOT_RUN_NO_LIVE` | Package load, menus, bridge discovery, authenticated client read/write, undo history, and complete logs from the exact Live run.          |
 
-The current environment has no Ableton Live installation. `PACKAGE_ABLX` and `LIVE_RUNTIME`
-have not been run. This file contains no inferred or historical pass.
+The two passes above are bounded to source commit
+`86eae1c5f9f3047c416f71b15292a00aee3fa0fa` and the receipts below. The current
+environment has neither a resolvable Extensions CLI nor an Ableton Live installation.
+`PACKAGE_ABLX` and `LIVE_RUNTIME` have not been run.
+
+## Recorded receipts for `86eae1c`
+
+### `CI_SAFE`
+
+- Clean no-hardlink verification passed the frozen script-free install, recursive typecheck,
+  lint, formatting, 632 coverage tests (core 302, MCP 205, extension 125), recursive build,
+  packed MCP consumer smoke with 12 tools, and production dependency audits.
+- GitHub CI run `33304814551`, security run `33304814550`, and docs tools drift run
+  `33304814555` all completed successfully on the same exact commit.
+- This proves the SDK-free contracts and distribution checks only. It does not prove the
+  licensed adapter bundle or Live behavior.
+
+### `SDK_TYPECHECK`
+
+- Command: `pnpm exec tsc -p packages/extension/tsconfig.live.json --noEmit`
+- Result: exit code `0`, with a clean source tree before and after.
+- Toolchain: TypeScript `5.9.3`, pnpm `10.13.1`, Node `24.12.0`.
+- Licensee-owned SDK metadata: `@ableton-extensions/sdk@1.0.0-beta.0`.
+- SDK archive SHA-256:
+  `A10EC4D85D1B3AF32DE924FF77454B05BF3CFD5A0BFCD3B8A6C2BD74069D7A6C`.
+- Exact mapped declaration SHA-256:
+  `3653B5E139C4D2FFD2BCA3A1DD5127E3300A8C4C4FBF0CDF890C0DBA5AAC0D44`.
+
+The SDK archive came from the licensee's local Ableton beta bundle; the hash identifies the
+exact input but is not a vendor-signature claim. No SDK declaration or documentation content is
+reproduced here. Node `24.12.0` is below this package's `>=24.14.1` packaging/runtime floor, so
+this receipt proves declaration compatibility only. Re-run under a compliant Node version before
+packaging or Live testing.
 
 ## Gate 1: `CI_SAFE`
 
@@ -26,9 +57,9 @@ pnpm install --frozen-lockfile --ignore-scripts
 pnpm typecheck
 pnpm lint
 pnpm format:check
+pnpm test:coverage
 pnpm build
-pnpm --filter @othmanadi/loophole-core test
-pnpm --filter @othmanadi/ableton-mcp test
+pnpm --filter @othmanadi/ableton-mcp test:artifact
 ```
 
 Record the commit SHA, Node and pnpm versions, exit codes, and test totals. This gate proves
