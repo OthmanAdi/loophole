@@ -9,13 +9,7 @@
 
 /** Every object kind that may be represented by an opaque session reference. */
 export type SessionReferenceKind =
-  | 'track'
-  | 'scene'
-  | 'cue-point'
-  | 'clip-slot'
-  | 'clip'
-  | 'device'
-  | 'parameter';
+  'track' | 'scene' | 'cue-point' | 'clip-slot' | 'clip' | 'device' | 'parameter';
 
 const REFERENCE_TAGS = {
   track: 'trk',

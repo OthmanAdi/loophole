@@ -14,13 +14,7 @@ import type {
   TrackId,
 } from '@othmanadi/loophole-core';
 type ReferenceKind =
-  | 'track'
-  | 'scene'
-  | 'cue-point'
-  | 'clip-slot'
-  | 'clip'
-  | 'device'
-  | 'parameter';
+  'track' | 'scene' | 'cue-point' | 'clip-slot' | 'clip' | 'device' | 'parameter';
 type AnyReference = TrackId | SceneId | CuePointId | ClipSlotId | ClipId | DeviceId | ParamId;
 type Entry = {
   readonly kind: ReferenceKind;

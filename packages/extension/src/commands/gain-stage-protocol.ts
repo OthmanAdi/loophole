@@ -23,9 +23,7 @@ export interface GainStageCancelRequest {
 }
 
 export type GainStageModalRequest =
-  | GainStageAnalyzeRequest
-  | GainStageApplyRequest
-  | GainStageCancelRequest;
+  GainStageAnalyzeRequest | GainStageApplyRequest | GainStageCancelRequest;
 
 /** Treat malformed webview output as cancel, never as approval to mutate a mixer. */
 export function parseGainStageModalRequest(value: unknown): GainStageModalRequest | null {

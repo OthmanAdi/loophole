@@ -29,11 +29,7 @@
  *   Recovery: avoid it; it is a documented gap, not a transient failure.
  */
 export type BridgeErrorCode =
-  | 'STALE_REFERENCE'
-  | 'WRONG_TYPE'
-  | 'BAD_INPUT'
-  | 'SDK_REJECTED'
-  | 'UNSUPPORTED';
+  'STALE_REFERENCE' | 'WRONG_TYPE' | 'BAD_INPUT' | 'SDK_REJECTED' | 'UNSUPPORTED';
 
 /** Default recovery hints per code, used when a call site does not supply one. */
 const DEFAULT_HINTS: Record<BridgeErrorCode, string> = {
