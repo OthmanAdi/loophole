@@ -27,7 +27,7 @@
     "audio-decode": "^2.2.3"
   },
   "devDependencies": {
-    "esbuild": "^0.28.0",
+    "esbuild": "^0.28.2",
     "tsx": "^4.22.4",
     "typescript": "^5.9.3"
   }
