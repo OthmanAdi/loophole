@@ -27,6 +27,6 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "pino": "^10.3.1",
     "tsx": "^4.23.13",
-    "zod": "^4.5.4"
+    "zod": "^4.6.1"
   }
 }
