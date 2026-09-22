@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Contract tests pinning the SDK semantics the fake reproduces (pitch clamp, stale-id throw, one transaction equals one undo).
 - CI workflow running typecheck, lint, format check, tests with coverage, and build on Node 22 and 24.
 
+### Fixed
+
+- The extension bundle no longer takes the Ableton Extension Host down while it loads. The host evaluates extensions in a `vm` context without Node's web globals (`Headers`, `URL`, `Event`, `global` and others), and the bundled HTTP layer read `Headers.prototype` at load time, so the host exited with code 1 and every installed extension vanished from Live. `sandbox-shim.ts` now fills the missing globals before anything else in the bundle runs. Verified in Live 12.4.15b2 with the bridge answering an authenticated `initialize`.
+
 ### Thanks
 
 - Contributors are credited here and in `CONTRIBUTORS.md`, not in commit trailers.

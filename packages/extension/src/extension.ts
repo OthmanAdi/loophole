@@ -31,6 +31,8 @@
  * against the genuine `.d.mts`.
  */
 
+// Must stay the first import: fills the globals the Extension Host sandbox lacks.
+import './sandbox-shim.js';
 import {
   createServer as createHttpServer,
   type IncomingMessage,
