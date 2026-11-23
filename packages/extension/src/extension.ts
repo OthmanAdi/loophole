@@ -104,28 +104,8 @@ async function startBridgeServer(
   context: ReturnType<typeof initialize<typeof API_VERSION>>,
   bridge: AbletonLiveBridge,
 ): Promise<void> {
-  let server: ReturnType<typeof buildServer> | undefined;
-  let transport: StreamableHTTPServerTransport | undefined;
   let http: ReturnType<typeof createHttpServer> | undefined;
   try {
-    const bridgeServer = buildServer(bridge);
-    server = bridgeServer;
-    // Stateless mode: one Live session is one logical MCP session.
-    // per the SDK docstring, OMITTING `sessionIdGenerator` disables session management,
-    // identical to the docstring's `sessionIdGenerator: undefined`. We omit it rather
-    // than pass `undefined` because the SDK types the field as optional-not-`| undefined`
-    // and our `exactOptionalPropertyTypes` rejects an explicit `undefined`.
-    const httpTransport = new StreamableHTTPServerTransport({});
-    transport = httpTransport;
-    // Wire the McpServer to the transport once, at boot. `StreamableHTTPServerTransport`
-    // IS a `Transport`, but it declares `onclose`/`onerror`/`onmessage` as accessor pairs
-    // typed `(() => void) | undefined`, which under `exactOptionalPropertyTypes` are not
-    // assignable to `Transport`'s optional `onclose?: () => void` form. This is a
-    // third-party `.d.ts` ergonomics gap (the SDK's own `StdioServerTransport` uses plain
-    // optionals and connects with no cast), not a real incompatibility, so we widen to the
-    // `Transport` interface the method expects at this one boundary.
-    await bridgeServer.connect(httpTransport as Transport);
-
     const { token, allowedOrigins } = readOrCreateAuth(context.environment.storageDirectory);
 
     const httpServer = createHttpServer((req: IncomingMessage, res: ServerResponse) => {
@@ -149,7 +129,7 @@ async function startBridgeServer(
         res.writeHead(HTTP_UNAUTHORIZED).end();
         return;
       }
-      void httpTransport.handleRequest(req, res).catch((error: unknown) => {
+      void handleMcpRequest(req, res, bridge).catch((error: unknown) => {
         console.error('[loophole] transport.handleRequest failed:', error);
         if (!res.headersSent) {
           res.writeHead(500).end();
@@ -174,12 +154,45 @@ async function startBridgeServer(
     }
   } catch (error) {
     try {
-      await cleanupPartialBridge({ http, mcp: server, transport });
+      await cleanupPartialBridge({ http, mcp: undefined, transport: undefined });
     } catch (cleanupError) {
       console.error('[loophole] failed to fully clean up bridge startup:', cleanupError);
     }
     console.error('[loophole] failed to start the MCP bridge (commands still work):', error);
   }
+}
+
+/**
+ * Serve ONE MCP request with a fresh stateless transport and fresh server connection.
+ * The SDK throws on a reused stateless transport ("cannot be reused across requests"),
+ * and `Protocol.connect` holds a single transport slot, so per-request instances are
+ * the supported stateless pattern. The shared `bridge` (write queue, references) is
+ * long-lived and carries all durable state; the MCP server itself has none.
+ */
+async function handleMcpRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bridge: AbletonLiveBridge,
+): Promise<void> {
+  const bridgeServer = buildServer(bridge);
+  // Stateless mode: OMITTING `sessionIdGenerator` disables session management,
+  // identical to the docstring's `sessionIdGenerator: undefined`. We omit it rather
+  // than pass `undefined` because the SDK types the field as optional-not-`| undefined`
+  // and our `exactOptionalPropertyTypes` rejects an explicit `undefined`.
+  const transport = new StreamableHTTPServerTransport({});
+  // Widen to `Transport`: `StreamableHTTPServerTransport` declares
+  // `onclose`/`onerror`/`onmessage` as accessor pairs typed `(() => void) | undefined`,
+  // which under `exactOptionalPropertyTypes` are not assignable to `Transport`'s
+  // optional accessor form (a third-party `.d.ts` ergonomics gap, not a real
+  // incompatibility).
+  await bridgeServer.connect(transport as Transport);
+  // Release the protocol slot when the response finishes: SSE GET streams stay open
+  // until the client disconnects (close fires then); POST responses close after the
+  // reply is written.
+  res.on('close', () => {
+    void transport.close();
+  });
+  await transport.handleRequest(req, res);
 }
 
 export type { ActivationContext };
